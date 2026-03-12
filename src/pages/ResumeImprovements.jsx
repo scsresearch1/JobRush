@@ -39,7 +39,7 @@ const ResumeImprovements = () => {
       }
       setResume(parsed)
       const evaluation = evaluateResume(parsed)
-      try {
+        try {
         const { recommendations: recs } = await getRecommendations(parsed, evaluation)
         if (recs?.length > 0) setRecommendations(recs)
       } catch (err) {
@@ -127,9 +127,14 @@ const ResumeImprovements = () => {
           <p className="text-amber-600 mb-6">Upload and parse a resume on the ATS Analysis page first.</p>
         )}
         {loading && (
-          <div className="flex items-center gap-2 text-primary-600 mb-6">
-            <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-            Loading AI recommendations...
+          <div className="flex flex-col gap-2 text-primary-600 mb-6">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+              Loading AI recommendations...
+            </div>
+            <p className="text-sm text-gray-500">
+              First load may take 30–60 seconds if the server was sleeping. Please wait.
+            </p>
           </div>
         )}
         {error && (

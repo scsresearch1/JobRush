@@ -4,18 +4,27 @@
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
+const FETCH_TIMEOUT_MS = 90000 // 90s (covers Render cold start ~60s + Groq ~15s)
 
 async function fetchApi(path, body) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   let res
   try {
     res = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: controller.signal,
     })
   } catch (err) {
+    clearTimeout(timeoutId)
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out. The server may be waking up—try again in a moment.')
+    }
     throw new Error('API server unreachable. Run "npm run server" in a separate terminal and add GROQ_API_KEY to .env')
   }
+  clearTimeout(timeoutId)
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     const msg = err.error || `API error: ${res.status}`

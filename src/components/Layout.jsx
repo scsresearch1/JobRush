@@ -1,10 +1,18 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { BriefcaseIcon, HomeIcon, UserIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 
 const Layout = ({ children }) => {
   const location = useLocation()
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
+
+  // Pre-warm Render API when user enters app (reduces cold-start delay for AI features)
+  useEffect(() => {
+    const base = import.meta.env.VITE_API_URL
+    if (base) {
+      fetch(`${base}/api/health`).catch(() => {})
+    }
+  }, [])
 
   const navLinks = [
     { to: '/dashboard', label: 'Dashboard', icon: HomeIcon },

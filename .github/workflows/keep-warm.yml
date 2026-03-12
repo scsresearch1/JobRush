@@ -1,0 +1,20 @@
+# Keep Render free-tier instance warm by pinging /api/health every 10 minutes
+# Set repository variable RENDER_API_URL to override (Settings → Secrets and variables → Actions)
+name: Keep API Warm
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'  # Every 10 minutes
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    env:
+      API_URL: ${{ vars.RENDER_API_URL }}
+    steps:
+      - name: Ping Render API
+        run: |
+          URL="${API_URL:-https://jobrush-api.onrender.com}"
+          echo "Pinging $URL/api/health"
+          curl -sf --max-time 90 "$URL/api/health" || true

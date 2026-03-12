@@ -42,3 +42,27 @@ The server only receives structured data (resume JSON, behavioral report metrics
 
 1. Deploy **Render** first → get the API URL
 2. Deploy **Netlify** with `VITE_API_URL` set to that URL
+
+---
+
+## Keep-Warm (Render Free Tier)
+
+Render free instances spin down after ~15 min of inactivity. First request can take 50+ seconds. Two mitigations:
+
+### 1. GitHub Actions (built-in)
+
+The repo includes `.github/workflows/keep-warm.yml` which pings `/api/health` every 10 minutes.
+
+- **Enable**: Push the workflow; it runs automatically on schedule
+- **Override URL**: Repo → Settings → Secrets and variables → Actions → add variable `RENDER_API_URL` = your Render URL
+
+### 2. Client-side pre-warm
+
+When users enter the app (Layout), a background ping to `/api/health` runs. This starts waking the server before they need AI features.
+
+### 3. External cron (alternative)
+
+Use [cron-job.org](https://cron-job.org) or [UptimeRobot](https://uptimerobot.com):
+
+- URL: `https://your-render-app.onrender.com/api/health`
+- Interval: every 10–15 minutes

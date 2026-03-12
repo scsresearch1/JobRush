@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "description": "JobRush - Your Career Acceleration Platform",
+  "overrides": {
+    "@tootallnate/once": "^3.0.1",
+    "dompurify": "^3.2.4",
+    "node-fetch": "^2.7.0",
+    "esbuild": "^0.25.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
