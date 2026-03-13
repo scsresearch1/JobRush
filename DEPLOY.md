@@ -10,7 +10,7 @@ All sensitive processing stays **local** (browser):
 - Webcam capture & frame analysis (face-api.js)
 - No raw video uploaded to the server
 
-The server only receives structured data (resume JSON, behavioral report metrics) for Groq AI calls.
+The server only receives structured data (resume JSON, behavioral report metrics) for AI calls.
 
 ---
 
@@ -33,7 +33,7 @@ The server only receives structured data (resume JSON, behavioral report metrics
 3. **Build command**: `npm install && cd server && npm install`
 4. **Start command**: `node server/index.js`
 5. **Environment variables**:
-   - `GROQ_API_KEY` = your Groq API key
+   - `GROQ_API_KEY` = your AI API key
    - Optional: `GOOGLE_APPLICATION_CREDENTIALS` for Indian TTS
 
 ---

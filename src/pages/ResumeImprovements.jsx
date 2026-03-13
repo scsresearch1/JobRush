@@ -37,11 +37,17 @@ const ResumeImprovements = () => {
     setLoading(true)
     setError(null)
     const evaluation = evaluateResume(parsed)
+    const apiBase = import.meta.env.VITE_API_URL || ''
     try {
+      console.log('[ResumeImprovements] Fetching recommendations', { apiBase: apiBase || '(empty)' })
+      // Pre-warm: fire health ping to wake Render (runs in parallel, no await)
+      if (apiBase) fetch(`${apiBase}/api/health`).catch(() => {})
       const { recommendations: recs } = await getRecommendations(parsed, evaluation)
       if (recs?.length > 0) setRecommendations(recs)
       setError(null)
+      console.log('[ResumeImprovements] Success', { count: recs?.length })
     } catch (err) {
+      console.error('[ResumeImprovements] Error', { message: err.message, name: err.name, stack: err.stack })
       setError(err.message)
     } finally {
       setLoading(false)
@@ -110,7 +116,7 @@ const ResumeImprovements = () => {
               AI Resume Improvement Recommendations
             </h1>
             <p className="text-gray-600">
-              Targeted suggestions from Groq AI based on your resume and ATS evaluation.
+              Targeted suggestions from AI based on your resume and ATS evaluation.
             </p>
           </div>
           {resume && Object.keys(applied).length > 0 && (

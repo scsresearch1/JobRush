@@ -1,10 +1,10 @@
 /**
- * Groq LLM service - explanations and recommendations
- * Calls server API (requires API server running with GROQ_API_KEY)
+ * LLM service - explanations and recommendations
+ * Calls server API (requires API server running)
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
-const FETCH_TIMEOUT_MS = 65000 // 65s (Render cold start ~50s + Groq ~15s)
+const FETCH_TIMEOUT_MS = 120000 // 120s (Render cold start ~60-90s + LLM ~20s)
 
 function timeoutPromise(ms) {
   return new Promise((_, reject) =>
@@ -14,7 +14,9 @@ function timeoutPromise(ms) {
 
 async function fetchApi(path, body) {
   const url = `${API_BASE}${path}`
+  console.log('[JobRush API]', { url, path, apiBase: API_BASE || '(empty)' })
   if (!API_BASE && typeof window !== 'undefined' && !window.location.hostname.includes('localhost')) {
+    console.error('[JobRush API] VITE_API_URL not set in production')
     throw new Error('API URL not configured. Add VITE_API_URL in Netlify build environment variables.')
   }
   const controller = new AbortController()
@@ -27,9 +29,11 @@ async function fetchApi(path, body) {
   })
   let res
   try {
-    res = await Promise.race([fetchPromise, timeoutPromise(FETCH_TIMEOUT_MS + 5000)])
+    res = await Promise.race([fetchPromise, timeoutPromise(FETCH_TIMEOUT_MS + 10000)])
+    console.log('[JobRush API] Response', { path, status: res?.status, ok: res?.ok })
   } catch (err) {
     clearTimeout(timeoutId)
+    console.error('[JobRush API] Fetch error', { path, name: err.name, message: err.message, stack: err.stack })
     if (err.message?.includes('timed out')) throw err
     if (err.name === 'AbortError') {
       throw new Error('Request timed out. The server may be waking up—try again in a moment.')
@@ -43,20 +47,25 @@ async function fetchApi(path, body) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     const msg = err.error || `API error: ${res.status}`
+    console.error('[JobRush API] HTTP error', { path, status: res.status, body: err })
     if (res.status === 404) {
       throw new Error('API server not found. Run "npm run server" in a separate terminal, or use "npm run dev:full" to run both.')
     }
-    if (res.status === 500 && msg.includes('GROQ_API_KEY')) {
-      throw new Error('Groq API key not configured. Add GROQ_API_KEY to your .env file.')
+    if (res.status === 500 && msg.includes('not configured')) {
+      throw new Error('AI service not configured. Add the required API key to your environment.')
     }
     if (res.status === 500) {
       throw new Error(msg + ' (Ensure API server is running: npm run server)')
     }
     throw new Error(msg)
   }
+  const text = await res.text()
   try {
-    return await res.json()
+    const data = JSON.parse(text)
+    console.log('[JobRush API] Success', { path })
+    return data
   } catch (parseErr) {
+    console.error('[JobRush API] JSON parse error', { path, preview: text?.slice(0, 200), parseErr: parseErr.message })
     throw new Error('Invalid response from API. Ensure VITE_API_URL points to your Render backend.')
   }
 }

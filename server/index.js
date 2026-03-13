@@ -1,6 +1,6 @@
 /**
- * JobRush API - Groq LLM for ATS explanations and recommendations
- * Run: node server/index.js (requires GROQ_API_KEY in env)
+ * JobRush API - LLM for ATS explanations and recommendations
+ * Run: node server/index.js (requires API key in env)
  */
 import { config } from 'dotenv'
 import { resolve } from 'path'
@@ -10,7 +10,11 @@ import cors from 'cors'
 import Groq from 'groq-sdk'
 
 const app = express()
-app.use(cors({ origin: true }))
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+}))
 app.use(express.json({ limit: '1mb' }))
 
 const groq = process.env.GROQ_API_KEY
@@ -21,7 +25,7 @@ const MODEL = 'llama-3.3-70b-versatile'
 
 async function callGroq(systemPrompt, userPrompt, maxTokens = 1024) {
   if (!groq) {
-    throw new Error('GROQ_API_KEY is not configured. Add it to your environment.')
+    throw new Error('AI service not configured. Add the required API key to your environment.')
   }
   const completion = await groq.chat.completions.create({
     model: MODEL,
@@ -81,7 +85,7 @@ Use plain dashes or nothing. No asterisks. No numbers.`
     res.json({ explanation })
   } catch (err) {
     console.error('explain-ats error:', err)
-    const status = err.message?.includes('GROQ_API_KEY') ? 503 : 500
+    const status = err.message?.includes('not configured') ? 503 : 500
     res.status(status).json({
       error: err.message || 'Failed to generate explanation',
     })
@@ -125,7 +129,7 @@ Respond in JSON array format only, no other text:
     res.json({ recommendations })
   } catch (err) {
     console.error('recommendations error:', err)
-    const status = err.message?.includes('GROQ_API_KEY') ? 503 : 500
+    const status = err.message?.includes('not configured') ? 503 : 500
     res.status(status).json({
       error: err.message || 'Failed to generate recommendations',
     })
@@ -203,7 +207,7 @@ Include: 1) Why this program/university, 2) Relevant background and achievements
     res.json({ content: raw })
   } catch (err) {
     console.error('generate-sop error:', err)
-    const status = err.message?.includes('GROQ_API_KEY') ? 503 : 500
+    const status = err.message?.includes('not configured') ? 503 : 500
     res.status(status).json({
       error: err.message || 'Failed to generate SOP',
     })
@@ -241,7 +245,7 @@ Include: 1) Opening paragraph expressing interest, 2) Relevant background and ke
     res.json({ content: raw })
   } catch (err) {
     console.error('generate-cover-letter error:', err)
-    const status = err.message?.includes('GROQ_API_KEY') ? 503 : 500
+    const status = err.message?.includes('not configured') ? 503 : 500
     res.status(status).json({
       error: err.message || 'Failed to generate cover letter',
     })
@@ -349,7 +353,7 @@ Generate 4-6 correction tips as JSON array. Be specific to these metrics.`
     res.json({ recommendations })
   } catch (err) {
     console.error('interview-recommendations error:', err)
-    const status = err.message?.includes('GROQ_API_KEY') ? 503 : 500
+    const status = err.message?.includes('not configured') ? 503 : 500
     res.status(status).json({
       error: err.message || 'Failed to generate recommendations',
     })
@@ -357,11 +361,11 @@ Generate 4-6 correction tips as JSON array. Be specific to these metrics.`
 })
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, groq: !!groq, tts: !!textToSpeechClient })
+  res.json({ ok: true, llm: !!groq, tts: !!textToSpeechClient })
 })
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
   console.log(`JobRush API running on http://localhost:${PORT}`)
-  if (!groq) console.warn('Warning: GROQ_API_KEY not set. API will return errors.')
+  if (!groq) console.warn('Warning: API key not set. AI features will return errors.')
 })
