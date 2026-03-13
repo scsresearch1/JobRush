@@ -29,27 +29,28 @@ const ResumeImprovements = () => {
   const [applying, setApplying] = useState(null) // index or 'all'
   const [applyError, setApplyError] = useState(null)
 
-  useEffect(() => {
-    const run = async () => {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      const parsed = stored ? JSON.parse(stored) : null
-      if (!parsed) {
-        setLoading(false)
-        return
-      }
-      setResume(parsed)
-      const evaluation = evaluateResume(parsed)
-        try {
-        const { recommendations: recs } = await getRecommendations(parsed, evaluation)
-        if (recs?.length > 0) setRecommendations(recs)
-      } catch (err) {
-        setError(err.message)
-      } finally {
-        setLoading(false)
-      }
+  const fetchRecommendations = React.useCallback(async () => {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    const parsed = stored ? JSON.parse(stored) : null
+    if (!parsed) return
+    setResume(parsed)
+    setLoading(true)
+    setError(null)
+    const evaluation = evaluateResume(parsed)
+    try {
+      const { recommendations: recs } = await getRecommendations(parsed, evaluation)
+      if (recs?.length > 0) setRecommendations(recs)
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
     }
-    run()
   }, [])
+
+  useEffect(() => {
+    fetchRecommendations()
+  }, [fetchRecommendations])
 
   const saveResume = (modified) => {
     setResume(modified)
@@ -138,7 +139,16 @@ const ResumeImprovements = () => {
           </div>
         )}
         {error && (
-          <p className="text-amber-600 text-sm mb-4">Using default suggestions. ({error})</p>
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <p className="text-amber-600 text-sm">Using default suggestions. ({error})</p>
+            <button
+              type="button"
+              onClick={fetchRecommendations}
+              className="text-sm text-primary-600 hover:text-primary-700 font-medium underline"
+            >
+              Retry
+            </button>
+          </div>
         )}
         {applyError && (
           <p className="text-red-600 text-sm mb-4">Could not apply correction: {applyError}</p>
