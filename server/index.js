@@ -10,11 +10,16 @@ import cors from 'cors'
 import Groq from 'groq-sdk'
 
 const app = express()
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type'],
-}))
+
+// CORS: explicit headers on every response (Render proxy may strip cors() package headers)
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') return res.status(204).end()
+  next()
+})
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Content-Type'] }))
 app.use(express.json({ limit: '1mb' }))
 
 const groq = process.env.GROQ_API_KEY

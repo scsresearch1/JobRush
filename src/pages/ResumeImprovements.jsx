@@ -7,7 +7,7 @@ import {
   ArrowPathIcon,
   DocumentMagnifyingGlassIcon,
 } from '@heroicons/react/24/outline'
-import { getRecommendations, applyCorrection } from '../services/groqService.js'
+import { getRecommendations, applyCorrection, pingHealth } from '../services/groqService.js'
 import { evaluateResume } from '../ats/index.js'
 import { getDisplayLines } from '../utils/cleanAiText.js'
 
@@ -37,11 +37,10 @@ const ResumeImprovements = () => {
     setLoading(true)
     setError(null)
     const evaluation = evaluateResume(parsed)
-    const apiBase = import.meta.env.VITE_API_URL || ''
     try {
-      console.log('[ResumeImprovements] Fetching recommendations', { apiBase: apiBase || '(empty)' })
-      // Pre-warm: fire health ping to wake Render (runs in parallel, no await)
-      if (apiBase) fetch(`${apiBase}/api/health`).catch(() => {})
+      console.log('[ResumeImprovements] Fetching recommendations')
+      // Pre-warm: wait for server to be ready (retries every 10s, up to 90s)
+      await pingHealth(9, 10000)
       const { recommendations: recs } = await getRecommendations(parsed, evaluation)
       if (recs?.length > 0) setRecommendations(recs)
       setError(null)
@@ -140,7 +139,7 @@ const ResumeImprovements = () => {
               Loading AI recommendations...
             </div>
             <p className="text-sm text-gray-500">
-              First load may take 30–60 seconds if the server was sleeping. Please wait.
+              First load may take up to 2 minutes if the server was sleeping. Please wait.
             </p>
           </div>
         )}

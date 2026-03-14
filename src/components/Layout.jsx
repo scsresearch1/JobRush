@@ -1,17 +1,15 @@
 import React, { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { BriefcaseIcon, HomeIcon, UserIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
+import { pingHealth } from '../services/groqService.js'
 
 const Layout = ({ children }) => {
   const location = useLocation()
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
 
-  // Pre-warm Render API when user enters app (reduces cold-start delay for AI features)
+  // Pre-warm Render API when user enters app (retries in background, reduces cold-start for AI features)
   useEffect(() => {
-    const base = import.meta.env.VITE_API_URL
-    if (base) {
-      fetch(`${base}/api/health`).catch(() => {})
-    }
+    pingHealth(9, 10000).catch(() => {})
   }, [])
 
   const navLinks = [

@@ -3,6 +3,13 @@
   command = "npm run build"
   publish = "dist"
 
+# Proxy API to Render (same-origin, avoids CORS). Must come before SPA catch-all.
+[[redirects]]
+  from = "/api/*"
+  to = "https://jobrush-api.onrender.com/api/:splat"
+  status = 200
+  force = true
+
 # SPA: serve index.html for all routes
 [[redirects]]
   from = "/*"
