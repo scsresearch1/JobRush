@@ -11,11 +11,11 @@ import Groq from 'groq-sdk'
 
 const app = express()
 
-// CORS: reflect request origin (required by some proxies); allow jbrush.netlify.app
+// CORS: reflect request origin (required by some proxies)
 const ALLOWED_ORIGINS = ['https://jbrush.netlify.app', 'http://localhost:5173', 'http://localhost:3000']
 app.use((req, res, next) => {
   const origin = req.headers.origin
-  const allow = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  const allow = origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.netlify.app')) ? origin : '*'
   res.setHeader('Access-Control-Allow-Origin', allow)
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')

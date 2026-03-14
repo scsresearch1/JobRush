@@ -139,7 +139,7 @@ const ResumeImprovements = () => {
               Loading AI recommendations...
             </div>
             <p className="text-sm text-gray-500">
-              First load may take up to 2 minutes if the server was sleeping. Please wait.
+              Your resume needs more corrections—we're deploying our best model.
             </p>
           </div>
         )}
