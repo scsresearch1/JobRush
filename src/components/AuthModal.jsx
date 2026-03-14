@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { XMarkIcon, UserIcon, LockClosedIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
 import { saveUser, getUserByEmail } from '../services/database'
+import { getISTTimestamp } from '../utils/timestamp.js'
 
 const AuthModal = ({ isOpen, onClose, onSuccess }) => {
   const [isLogin, setIsLogin] = useState(true)
@@ -88,7 +89,7 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
         name: isLogin ? 'User' : formData.name,
         email: formData.email,
         isAuthenticated: true,
-        loginTime: new Date().toISOString()
+        loginTime: getISTTimestamp()
       }
 
       localStorage.setItem('jobRush_user', JSON.stringify(userData))
@@ -102,7 +103,7 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
         name: isLogin ? 'User' : formData.name,
         email: formData.email,
         isAuthenticated: true,
-        loginTime: new Date().toISOString()
+        loginTime: getISTTimestamp()
       }
       localStorage.setItem('jobRush_user', JSON.stringify(userData))
       onSuccess(userData)

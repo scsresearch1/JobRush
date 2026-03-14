@@ -30,7 +30,7 @@ Replace `your-actual-api-key` and `your-actual-app-id` with values from the Fire
 
 ### 3. Set Realtime Database Rules
 
-In Firebase Console → **Realtime Database** → **Rules**, allow writes:
+In Firebase Console → **Realtime Database** → **Rules**, allow writes for both `userdb` and `interviewReports`:
 
 ```json
 {
@@ -38,10 +38,16 @@ In Firebase Console → **Realtime Database** → **Rules**, allow writes:
     "userdb": {
       ".read": true,
       ".write": true
+    },
+    "interviewReports": {
+      ".read": true,
+      ".write": true
     }
   }
 }
 ```
+
+**Required:** Without `interviewReports` rules, saving Mock Interview reports will fail with `PERMISSION_DENIED`.
 
 ### 4. Restart Dev Server
 

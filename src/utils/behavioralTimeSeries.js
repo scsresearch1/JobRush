@@ -6,6 +6,8 @@
  * Aggregates frame-level features into behavioral timelines per question.
  */
 
+import { getISTTimestamp } from './timestamp.js'
+
 const EMOTION_KEYS = ['neutral', 'happy', 'fear', 'surprise', 'anger', 'sadness', 'disgust']
 
 // Stage 7: Confidence composite weights (EC, HS, FV, ES, ER)
@@ -267,7 +269,7 @@ export function buildBehavioralReport(responses) {
   return {
     questionTimelines,
     overall,
-    generatedAt: new Date().toISOString(),
+    generatedAt: getISTTimestamp(),
   }
 }
 

@@ -11,6 +11,7 @@
 import { ref, set, get, push, update, remove } from 'firebase/database'
 import { database } from '../config/firebase'
 import { COLLECTIONS, USERDB_FIELDS, INTERVIEW_REPORTS_FIELDS } from '../config/databaseSchema'
+import { getISTTimestamp } from '../utils/timestamp.js'
 
 // =============================================================================
 // REFERENCE HELPERS
@@ -34,7 +35,7 @@ export const userRef = (uniqueId) => ref(database, `${COLLECTIONS.USERDB}/${uniq
  */
 export async function saveUser(uniqueId, emailId) {
   const userRefPath = userRef(uniqueId)
-  const timestamp = new Date().toISOString()
+  const timestamp = getISTTimestamp()
   await set(userRefPath, {
     [USERDB_FIELDS.UNIQUE_ID]: uniqueId,
     [USERDB_FIELDS.EMAIL_ID]: emailId,
@@ -110,7 +111,7 @@ export async function saveInterviewReport(userId, report, recommendations = []) 
     [INTERVIEW_REPORTS_FIELDS.USER_ID]: userId || 'anonymous',
     [INTERVIEW_REPORTS_FIELDS.REPORT]: report,
     [INTERVIEW_REPORTS_FIELDS.RECOMMENDATIONS]: recommendations,
-    [INTERVIEW_REPORTS_FIELDS.GENERATED_AT]: report?.generatedAt || new Date().toISOString(),
+    [INTERVIEW_REPORTS_FIELDS.GENERATED_AT]: report?.generatedAt || getISTTimestamp(),
   })
   return newRef.key
 }

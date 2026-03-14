@@ -275,7 +275,7 @@ export default function BehavioralReport({ responses }) {
           <span className="report-confidence-unit">/ 100</span>
         </div>
         <div className="report-meta">
-          <span>Generated: {new Date(report.generatedAt).toLocaleString()}</span>
+          <span>Generated: {new Date(report.generatedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>
           <span>Session duration: {safeToFixed(overall.totalDurationSec ?? 0, 1)} s</span>
         </div>
       </header>

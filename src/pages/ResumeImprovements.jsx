@@ -133,13 +133,16 @@ const ResumeImprovements = () => {
           <p className="text-amber-600 mb-6">Upload and parse a resume on the ATS Analysis page first.</p>
         )}
         {loading && (
-          <div className="flex flex-col gap-2 text-primary-600 mb-6">
+          <div className="flex flex-col gap-3 text-primary-600 mb-6">
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-              Loading AI recommendations...
+              <span className="font-medium">Crafting your personalized recommendations...</span>
             </div>
-            <p className="text-sm text-gray-500">
-              Your resume needs more corrections—we're deploying our best model.
+            <p className="text-sm text-gray-600 italic">
+              Our AI is analyzing your resume against top ATS standards—almost there!
+            </p>
+            <p className="text-xs text-gray-500">
+              💡 Tip: Strong resumes use action verbs and quantify impact. We're finding the best ways to highlight yours.
             </p>
           </div>
         )}

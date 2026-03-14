@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { XMarkIcon, EnvelopeIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { saveUser } from '../services/database'
+import { getISTTimestamp } from '../utils/timestamp.js'
 
 const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
   const [email, setEmail] = useState('')
@@ -36,7 +37,7 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
         uniqueId,
         email: email.trim(),
         isAuthenticated: true,
-        loginTime: new Date().toISOString(),
+        loginTime: getISTTimestamp(),
       }
       localStorage.setItem('jobRush_user', JSON.stringify(userData))
       onSuccess(userData)
