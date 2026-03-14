@@ -20,10 +20,9 @@ The server only receives structured data (resume JSON, behavioral report metrics
 2. Build settings (from `netlify.toml`):
    - Build command: `npm run build`
    - Publish directory: `dist`
-3. **Proxy**: `netlify.toml` proxies `/api/*` to Render (same-origin, avoids CORS). Update the `to` URL if your Render app has a different name.
-4. **Environment variables** (Build-time):
+3. **Environment variables** (Build-time):
    - `VITE_FIREBASE_*` = your Firebase web config
-   - `VITE_API_URL` = leave unset (proxy handles API). Only set if you need direct Render URL for some reason.
+   - `VITE_API_URL` = optional; defaults to `https://jobrush-api.onrender.com` in production. Override if your Render app has a different URL.
 
 ---
 
