@@ -11,11 +11,15 @@ import Groq from 'groq-sdk'
 
 const app = express()
 
-// CORS: explicit headers on every response (Render proxy may strip cors() package headers)
+// CORS: reflect request origin (required by some proxies); allow jbrush.netlify.app
+const ALLOWED_ORIGINS = ['https://jbrush.netlify.app', 'http://localhost:5173', 'http://localhost:3000']
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  const origin = req.headers.origin
+  const allow = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  res.setHeader('Access-Control-Allow-Origin', allow)
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Max-Age', '86400')
   if (req.method === 'OPTIONS') return res.status(204).end()
   next()
 })
