@@ -22,7 +22,7 @@ The server only receives structured data (resume JSON, behavioral report metrics
    - Publish directory: `dist`
 3. **Environment variables** (Build-time):
    - `VITE_FIREBASE_*` = your Firebase web config
-   - `VITE_API_URL` = optional; defaults to `https://jobrush-api.onrender.com` in production. Override if your Render app has a different URL.
+   - `VITE_API_URL` = optional; defaults to `https://jobrush.onrender.com` in production. Override if your Render app has a different URL.
 
 ---
 

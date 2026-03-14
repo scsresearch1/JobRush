@@ -15,6 +15,6 @@ jobs:
     steps:
       - name: Ping Render API
         run: |
-          URL="${API_URL:-https://jobrush-api.onrender.com}"
+          URL="${API_URL:-https://jobrush.onrender.com}"
           echo "Pinging $URL/api/health"
           curl -sf --max-time 90 "$URL/api/health" || true

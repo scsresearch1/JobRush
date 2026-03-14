@@ -5,7 +5,7 @@
  * Local dev: VITE_API_URL empty uses Vite proxy; or set to http://localhost:3001
  */
 
-const API_BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? 'https://jobrush-api.onrender.com' : '')
+const API_BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? 'https://jobrush.onrender.com' : '')
 const FETCH_TIMEOUT_MS = 120000 // 120s (Render cold start ~60-90s + LLM ~20s)
 const RETRY_DELAY_MS = 45000 // 45s wait before retry (gives cold server time to wake)
 const MAX_RETRIES = 1 // Retry once on timeout/network (cold start)
