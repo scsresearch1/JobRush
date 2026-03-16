@@ -45,15 +45,25 @@ const ROLE_MOTIVATION_TEMPLATES = [
   (role) => `What drew you to ${role}? How do you see your career evolving in this space?`,
 ]
 
-function pickRandom(arr) {
-  return arr[Math.floor(Math.random() * arr.length)]
+function pickRandom(arr, rng = Math.random) {
+  return arr[Math.floor(rng() * arr.length)]
+}
+
+/** Seeded random for reproducible but different questions on retry */
+function seededRandom(seed) {
+  return () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff
+    return seed / 0x7fffffff
+  }
 }
 
 /**
  * @param {Object} resume - Parsed resume { name, skills, experience, education, projects }
+ * @param {number} [seed] - Optional seed (e.g. Date.now()) to force different questions on retry
  * @returns {Array<{ type: string, question: string }>} 5 interview questions (varies each call)
  */
-export function generateInterviewQuestions(resume) {
+export function generateInterviewQuestions(resume, seed) {
+  const rng = seed != null ? seededRandom(seed) : Math.random
   if (!resume) return []
 
   const questions = []
@@ -65,22 +75,22 @@ export function generateInterviewQuestions(resume) {
   // 1. Self-introduction (random prompt)
   questions.push({
     type: 'self-introduction',
-    question: pickRandom(SELF_INTRO_PROMPTS),
+    question: pickRandom(SELF_INTRO_PROMPTS, rng),
   })
 
   // 2. Resume-specific project question (random project + template)
   const projectPool = [...projects, ...experience].filter(Boolean)
-  const project = projectPool.length ? pickRandom(projectPool) : null
+  const project = projectPool.length ? pickRandom(projectPool, rng) : null
   const projectName = project?.name || project?.role || project?.title || 'a recent project'
-  const projectTemplate = pickRandom(PROJECT_QUESTION_TEMPLATES)
+  const projectTemplate = pickRandom(PROJECT_QUESTION_TEMPLATES, rng)
   questions.push({
     type: 'resume-specific-project',
     question: project ? projectTemplate(projectName) : 'Tell me about a project or initiative you\'re proud of. What was your contribution and what impact did it have?',
   })
 
   // 3. Skill depth question (random skill + template)
-  const skill = skills.length ? pickRandom(skills) : (experience[0] ? 'your core technical skills' : 'your key skills')
-  const skillTemplate = pickRandom(SKILL_QUESTION_TEMPLATES)
+  const skill = skills.length ? pickRandom(skills, rng) : (experience[0] ? 'your core technical skills' : 'your key skills')
+  const skillTemplate = pickRandom(SKILL_QUESTION_TEMPLATES, rng)
   questions.push({
     type: 'skill-depth',
     question: skillTemplate(typeof skill === 'string' ? skill : skill?.name || 'your key skills'),
@@ -89,12 +99,12 @@ export function generateInterviewQuestions(resume) {
   // 4. Situational question (random)
   questions.push({
     type: 'situational',
-    question: pickRandom(SITUATIONAL_PROMPTS),
+    question: pickRandom(SITUATIONAL_PROMPTS, rng),
   })
 
   // 5. Role motivation question (random template)
   const recentRole = experience[0]?.role || experience[0]?.title || 'your field'
-  const roleTemplate = pickRandom(ROLE_MOTIVATION_TEMPLATES)
+  const roleTemplate = pickRandom(ROLE_MOTIVATION_TEMPLATES, rng)
   questions.push({
     type: 'role-motivation',
     question: roleTemplate(recentRole),

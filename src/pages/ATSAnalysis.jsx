@@ -233,10 +233,10 @@ const ATSAnalysis = () => {
           <ChartBarIcon className="w-5 h-5" />
           <span>Step 2 — ATS Compatibility Report</span>
         </div>
-        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2">
           ATS Compatibility Analysis
         </h1>
-        <p className="text-lg text-gray-600 max-w-2xl">
+        <p className="text-base sm:text-lg text-gray-600 max-w-2xl">
           Your resume evaluated using a deterministic, evidence-based ATS engine across 20 mass hiring companies, MAANG, and Ivy League universities.
         </p>
       </div>
@@ -244,17 +244,17 @@ const ATSAnalysis = () => {
       <div className="space-y-8">
         {/* Section 1: 20 Company Fresher Level Job Roles */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-8 py-6">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <BuildingOffice2Icon className="w-6 h-6" />
+          <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+            <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2 flex-wrap">
+              <BuildingOffice2Icon className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
               20 Mass Hiring Companies — Fresher Job Roles
             </h2>
             <p className="text-primary-100 text-sm mt-1">
               ATS scores for entry-level positions at top recruiters
             </p>
           </div>
-          <div className="p-6">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          <div className="p-4 sm:p-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
               {MASS_HIRING_COMPANIES.map(({ company, role }) => (
                 <button
                   key={company}
@@ -274,17 +274,17 @@ const ATSAnalysis = () => {
 
         {/* Section 2: MAANG Companies */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-8 py-6">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <BuildingOffice2Icon className="w-6 h-6" />
+          <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+            <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+              <BuildingOffice2Icon className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
               MAANG Company Scores
             </h2>
             <p className="text-primary-100 text-sm mt-1">
               Meta, Apple, Amazon, Netflix, Google — Top tech ATS compatibility
             </p>
           </div>
-          <div className="p-6">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+          <div className="p-4 sm:p-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4">
               {MAANG_COMPANIES.map(({ name, fullName }) => (
                 <button
                   key={name}
@@ -303,17 +303,17 @@ const ATSAnalysis = () => {
 
         {/* Section 3: Ivy League Universities */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-8 py-6">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <AcademicCapIcon className="w-6 h-6" />
+          <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+            <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+              <AcademicCapIcon className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
               Ivy League University Scores
             </h2>
             <p className="text-primary-100 text-sm mt-1">
               Graduate program and research position ATS compatibility
             </p>
           </div>
-          <div className="p-6">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="p-4 sm:p-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               {IVY_LEAGUE_UNIVERSITIES.map((uni) => (
                 <button
                   key={uni}
@@ -333,16 +333,16 @@ const ATSAnalysis = () => {
 
         {/* Section 4: Scientific ATS Score Analysis */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-8 py-6">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <BeakerIcon className="w-6 h-6" />
+          <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+            <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2 flex-wrap">
+              <BeakerIcon className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
               ATS Score Analysis — Scientific Report
             </h2>
             <p className="text-primary-100 text-sm mt-1">
               Deterministic scoring • Evidence-based • Reproducible & explainable
             </p>
           </div>
-          <div className="p-8 space-y-10">
+          <div className="p-4 sm:p-6 lg:p-8 space-y-8 sm:space-y-10">
             {/* Overall Score Gauge */}
             <div className="grid md:grid-cols-3 gap-6">
               <div className="md:col-span-2 rounded-xl border border-gray-200 p-6 bg-gradient-to-br from-primary-50 to-blue-50 flex items-center justify-center">

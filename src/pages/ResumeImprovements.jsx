@@ -107,10 +107,10 @@ const ResumeImprovements = () => {
         Back to ATS Analysis
       </Link>
 
-      <div className="bg-white rounded-2xl shadow-lg p-8">
+      <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 lg:p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2 flex-wrap">
               <SparklesIcon className="w-8 h-8 text-primary-600" />
               AI Resume Improvement Recommendations
             </h1>
@@ -186,11 +186,11 @@ const ResumeImprovements = () => {
           {recommendations.map((rec, index) => (
             <div
               key={index}
-              className={`p-6 rounded-xl border-2 ${
+              className={`p-4 sm:p-6 rounded-xl border-2 ${
                 applied[index] ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'
               }`}
             >
-              <div className="flex justify-between items-start gap-4">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="font-bold text-gray-900">{rec.section}</h3>
@@ -229,7 +229,7 @@ const ResumeImprovements = () => {
                 <button
                   onClick={() => handleApply(index)}
                   disabled={applied[index] || !!applying || !resume}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium shrink-0 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto ${
                     applied[index]
                       ? 'bg-green-100 text-green-700 cursor-default'
                       : 'bg-primary-600 text-white hover:bg-primary-700'

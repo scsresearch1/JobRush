@@ -342,7 +342,7 @@ const MockInterview = () => {
         Back to Dashboard
       </Link>
 
-      <div className="bg-white rounded-2xl shadow-lg p-8">
+      <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 lg:p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">
           <VideoCameraIcon className="w-8 h-8 text-primary-600" />
           AI HR Mock Interview
@@ -370,7 +370,7 @@ const MockInterview = () => {
                 <p className="text-gray-700 text-sm mb-4">
                   {resume.name || 'Candidate'} • {(resume.skills || []).length} skills • {(resume.experience || []).length} experiences
                 </p>
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     onClick={useExistingResume}
                     className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700"
@@ -462,16 +462,16 @@ const MockInterview = () => {
               <strong>Tip:</strong> For Indian-accent audio, add English (India) in Windows: Settings → Time & language → Language → Add language → English (India) → Options → Speech.
             </div>
 
-            <div className="flex gap-4 pt-4">
+            <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4 pt-4">
               <button
                 onClick={() => setStage('intake')}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg w-full sm:w-auto"
               >
                 Back
               </button>
               <button
                 onClick={startInterview}
-                className="flex items-center gap-2 bg-primary-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-700"
+                className="flex items-center justify-center gap-2 bg-primary-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-700 w-full sm:w-auto"
               >
                 <PlayIcon className="w-5 h-5" />
                 Start Mock Interview
@@ -550,21 +550,21 @@ const MockInterview = () => {
             <div className="rounded-xl overflow-hidden border border-gray-200 bg-white">
               <BehavioralReport responses={responses} />
             </div>
-            <div className="flex gap-4">
+            <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4">
               <button
                 onClick={() => {
                   setStage('questions')
                   setCurrentQuestionIndex(0)
                   setResponses([])
-                  if (resume) setQuestions(generateInterviewQuestions(resume))
+                  if (resume) setQuestions(generateInterviewQuestions(resume, Date.now()))
                 }}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg w-full sm:w-auto"
               >
                 Retry Interview
               </button>
               <Link
                 to="/dashboard"
-                className="bg-primary-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-700"
+                className="bg-primary-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-700 text-center w-full sm:w-auto"
               >
                 Back to Dashboard
               </Link>

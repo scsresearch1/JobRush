@@ -326,17 +326,26 @@ app.post('/api/interview-recommendations', async (req, res) => {
     const hs = safeNum(overall.avgHeadStability, 0) * 100
     const es = safeNum(overall.avgEmotionalStability, 1) * 100
     const br = safeNum(overall.avgBlinkRate, 0)
-    const systemPrompt = `You are an expert interview coach. Based on behavioral metrics from a mock interview (eye-contact, face visibility, head stability, blink rate, dominant emotions), generate 4-6 specific, actionable correction tips. Each tip should be: 1) Short and punchy (one sentence), 2) Tied to a specific metric when relevant, 3) Practical and easy to implement. Use a friendly, encouraging tone. Output JSON array only: [{"tip":"...","area":"eye-contact|visibility|stability|expression|general","priority":1}] where priority 1=highest. No other text.`
+    const systemPrompt = `You are an expert interview coach. Based on behavioral metrics from a mock interview (eye-contact, face visibility, head stability, blink rate, emotional expression), generate 4-6 specific, actionable correction tips. Each tip should be: 1) Short and punchy (one sentence), 2) Tied to a specific metric when relevant, 3) Practical and easy to implement. Use emotion data to give expression-specific advice (e.g. high fear/surprise→calm nerves; low happy→slight smile; stress indicators→breathing). Use a friendly, encouraging tone. Output JSON array only: [{"tip":"...","area":"eye-contact|visibility|stability|expression|general","priority":1}] where priority 1=highest. No other text.`
     const safeFix = (n, d) => {
       const x = (n != null && Number.isFinite(Number(n))) ? Number(n) : 0
       return x.toFixed(typeof d === 'number' ? d : 1)
     }
+    const emotionDist = overall.avgEmotionDistribution && typeof overall.avgEmotionDistribution === 'object' ? overall.avgEmotionDistribution : {}
+    const emotionStr = Object.entries(emotionDist)
+      .filter(([, v]) => v > 0.02)
+      .map(([k, v]) => `${k} ${safeFix((v ?? 0) * 100, 0)}%`)
+      .join(', ') || 'N/A'
     const qSummaries = questionTimelines.map((q, i) => {
       const s = q?.timeline?.summary && typeof q.timeline.summary === 'object' ? q.timeline.summary : {}
       const qec = safeFix(safeNum(s.meanEyeContactRatio, 0) * 100, 0)
       const qfv = safeFix(safeNum(s.meanFaceVisibility, 0) * 100, 0)
-      return `Q${i + 1} (${q?.type ?? 'unknown'}): confidence ${s.confidence ?? 0}, eye-contact ${qec}%, visibility ${qfv}%, dominant affect ${s.dominantEmotion ?? 'N/A'}`
+      const qDist = s.questionAnalysis?.emotionalProbabilityDistribution || {}
+      const qEmo = Object.entries(qDist).filter(([, v]) => v > 0.1).map(([k, v]) => `${k} ${safeFix((v ?? 0) * 100, 0)}%`).join(', ') || s.dominantEmotion ?? 'N/A'
+      return `Q${i + 1} (${q?.type ?? 'unknown'}): confidence ${s.confidence ?? 0}, eye-contact ${qec}%, visibility ${qfv}%, emotions: ${qEmo}`
     }).join('; ') || 'None'
+    const posRatio = safeFix((overall.positiveExpressionRatio ?? 1) * 100, 0)
+    const stressRatio = safeFix((overall.stressIndicatorRatio ?? 0) * 100, 0)
     const userPrompt = `Behavioral metrics:
 - Visual Confidence score: ${overall.confidence ?? 0}/100
 - Eye-contact ratio: ${safeFix(ec, 1)}%
@@ -344,10 +353,13 @@ app.post('/api/interview-recommendations', async (req, res) => {
 - Head stability: ${safeFix(hs, 1)}%
 - Emotional stability: ${safeFix(es, 1)}%
 - Blink rate: ${safeFix(br, 2)}/s
+- Positive expression ratio (neutral+happy): ${posRatio}%
+- Stress indicators (fear+anger+sadness): ${stressRatio}%
+- Emotion distribution: ${emotionStr}
 
 Per-question summaries: ${qSummaries}
 
-Generate 4-6 correction tips as JSON array. Be specific to these metrics.`
+Generate 4-6 correction tips as JSON array. Be specific to these metrics. Use emotion data for expression-related tips.`
 
     const raw = await callGroq(systemPrompt, userPrompt)
     let recommendations = []

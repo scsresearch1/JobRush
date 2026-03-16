@@ -7,7 +7,9 @@ import {
   UserGroupIcon,
   CheckCircleIcon,
   ArrowRightIcon,
-  SparklesIcon
+  SparklesIcon,
+  Bars3Icon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import DemoModal from './DemoModal'
 import AnimatedCounter from './AnimatedCounter'
@@ -20,6 +22,7 @@ const SparklesIconSVG = () => (
 
 const LandingPage = ({ onStartJourney }) => {
   const [isDemoOpen, setIsDemoOpen] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const isLoggedIn = typeof window !== 'undefined' && JSON.parse(localStorage.getItem('jobRush_user') || '{}')?.isAuthenticated
   const [currentTagline, setCurrentTagline] = useState(0)
   const [isFading, setIsFading] = useState(false)
@@ -86,10 +89,10 @@ const LandingPage = ({ onStartJourney }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-600 to-primary-400 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-primary-600 to-primary-400 rounded-lg flex items-center justify-center shrink-0">
                 <BriefcaseIcon className="w-6 h-6 text-white" />
               </div>
-              <span className="text-2xl font-bold gradient-text">JobRush</span>
+              <span className="text-xl sm:text-2xl font-bold gradient-text">JobRush</span>
             </div>
             <div className="hidden md:flex items-center space-x-8">
               <a href="#features" className="text-gray-700 hover:text-primary-600 transition">Features</a>
@@ -105,7 +108,31 @@ const LandingPage = ({ onStartJourney }) => {
                 </button>
               )}
             </div>
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen((o) => !o)}
+              className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+              aria-label="Toggle menu"
+            >
+              {mobileNavOpen ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
+            </button>
           </div>
+          {mobileNavOpen && (
+            <div className="md:hidden py-4 border-t border-gray-200 flex flex-col gap-1">
+              <a href="#features" onClick={() => setMobileNavOpen(false)} className="px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg">Features</a>
+              <a href="#benefits" onClick={() => setMobileNavOpen(false)} className="px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg">Benefits</a>
+              <a href="#about" onClick={() => setMobileNavOpen(false)} className="px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg">About</a>
+              {isLoggedIn ? (
+                <Link to="/dashboard" onClick={() => setMobileNavOpen(false)} className="mx-4 mt-2 bg-primary-600 text-white px-6 py-3 rounded-lg text-center font-medium">
+                  Dashboard
+                </Link>
+              ) : (
+                <button onClick={() => { onStartJourney?.(); setMobileNavOpen(false) }} className="mx-4 mt-2 bg-primary-600 text-white px-6 py-3 rounded-lg font-medium w-[calc(100%-2rem)]">
+                  Get Started
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </nav>
 

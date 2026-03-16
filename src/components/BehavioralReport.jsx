@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo, useState } from 'react'
-import { buildBehavioralReport, generateLocalInterviewTips } from '../utils/behavioralTimeSeries.js'
+import { buildBehavioralReport, generateLocalInterviewTips, detectEmotionSpikesFromCurves } from '../utils/behavioralTimeSeries.js'
 import { getInterviewRecommendations } from '../services/groqService.js'
 import { saveInterviewReport } from '../services/database.js'
 
@@ -77,6 +77,8 @@ const BEHAVIORAL_GRAPH_HEIGHT = 100
 
 function QuestionTimelineSection({ question, type, timeline, index }) {
   const { timeAxis, eyeContactRatio, faceVisibilityRatio, headPoseStabilityCurve, emotionCurves, blinkRateCurve, engagementCurve, confidenceTrendCurve, summary } = timeline
+  const [emotionChartsExpanded, setEmotionChartsExpanded] = useState(false)
+  const spikes = useMemo(() => detectEmotionSpikesFromCurves(emotionCurves, timeAxis), [emotionCurves, timeAxis])
 
   if (!timeAxis?.length) {
     return (
@@ -176,21 +178,47 @@ function QuestionTimelineSection({ question, type, timeline, index }) {
         </div>
       </div>
 
+      {/* Emotion spike callouts */}
+      {spikes.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {spikes.map((s, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium"
+              style={{ backgroundColor: `${emotionColors[s.emotion] || '#64748b'}20`, color: emotionColors[s.emotion] || '#64748b' }}
+            >
+              ↑ {s.emotion} at {safeToFixed(s.timeSec, 1)}s
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Stage 9: Behavioral Graph Generation — computed locally */}
       <div className="report-behavioral-graphs">
-        <div className="report-graphs-title">Fig. {index + 1}b. Time-series visualizations</div>
+        <div className="report-graphs-title flex items-center justify-between">
+          <span>Fig. {index + 1}b. Time-series visualizations</span>
+          <button
+            type="button"
+            onClick={() => setEmotionChartsExpanded((e) => !e)}
+            className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+          >
+            {emotionChartsExpanded ? 'Collapse emotion charts' : 'Expand emotion charts'}
+          </button>
+        </div>
 
-        <figure className="report-graph-emotion-full">
-          <figcaption className="report-graph-card-title">Emotion probability (P)</figcaption>
-          <div className="report-graph-emotion-stack">
-            {Object.entries(emotionCurves || {}).map(([key, data]) => (
-              <div key={key} className="report-graph-emotion-line">
-                <span className="report-graph-emotion-legend" style={{ color: emotionColors[key] || '#64748b' }}>{key}</span>
-                <MiniLineChart data={data} color={emotionColors[key] || '#64748b'} yLabel="" yMax={1} width={560} height={BEHAVIORAL_GRAPH_HEIGHT} />
-              </div>
-            ))}
-          </div>
-        </figure>
+        {emotionChartsExpanded && (
+          <figure className="report-graph-emotion-full">
+            <figcaption className="report-graph-card-title">Emotion probability (P)</figcaption>
+            <div className="report-graph-emotion-stack">
+              {Object.entries(emotionCurves || {}).map(([key, data]) => (
+                <div key={key} className="report-graph-emotion-line">
+                  <span className="report-graph-emotion-legend" style={{ color: emotionColors[key] || '#64748b' }}>{key}</span>
+                  <MiniLineChart data={data} color={emotionColors[key] || '#64748b'} yLabel="" yMax={1} width={280} height={BEHAVIORAL_GRAPH_HEIGHT} fullWidth />
+                </div>
+              ))}
+            </div>
+          </figure>
+        )}
 
         <div className="report-graph-grid-2col">
           <figure className="report-graph-card">
@@ -269,10 +297,20 @@ export default function BehavioralReport({ responses }) {
       <header className="report-header">
         <h1 className="report-title">Behavioral Analysis Report</h1>
         <p className="report-subtitle">Frame-level feature aggregation · Time-series metrics</p>
-        <div className="report-confidence-badge">
-          <span className="report-confidence-label">Visual Confidence</span>
-          <span className="report-confidence-value">{overall.confidence ?? 0}</span>
-          <span className="report-confidence-unit">/ 100</span>
+        <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
+          <div className="report-confidence-badge">
+            <span className="report-confidence-label">Visual Confidence</span>
+            <span className="report-confidence-value">{overall.confidence ?? 0}</span>
+            <span className="report-confidence-unit">/ 100</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 text-sm">
+            <span className="font-medium">Positive expression:</span>
+            <span>{safeToFixed((overall.positiveExpressionRatio ?? 1) * 100, 0)}%</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 text-sm">
+            <span className="font-medium">Stress indicators:</span>
+            <span>{safeToFixed((overall.stressIndicatorRatio ?? 0) * 100, 0)}%</span>
+          </div>
         </div>
         <div className="report-meta">
           <span>Generated: {new Date(report.generatedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>

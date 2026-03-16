@@ -156,10 +156,10 @@ const ResumeUpload = () => {
           <SparklesIcon className="w-5 h-5" />
           <span>Step 1 of your journey</span>
         </div>
-        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2">
           Upload Your Resume
         </h1>
-        <p className="text-lg text-gray-600 max-w-2xl mb-8">
+        <p className="text-base sm:text-lg text-gray-600 max-w-2xl mb-6 sm:mb-8">
           {user?.email ? (
             <>Welcome, <span className="font-medium text-primary-600">{user.email}</span>. Upload your CV and we'll automatically extract your skills, experience, education, and projects.</>
           ) : (
@@ -168,7 +168,7 @@ const ResumeUpload = () => {
         </p>
 
         {/* ATS Mechanism USPs */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-primary-100 p-6 shadow-lg">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-primary-100 p-4 sm:p-6 shadow-lg">
           <h3 className="text-lg font-bold text-gray-900 mb-4">Our ATS Mechanism</h3>
           <p className="text-gray-600 mb-6">Your resume is evaluated using industry-leading technology:</p>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -52,8 +52,8 @@ const Dashboard = () => {
 
   return (
     <div>
-      <div className="mb-10">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+      <div className="mb-8 sm:mb-10">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
           Welcome back, {user?.name || 'there'}!
         </h1>
         <p className="text-gray-600">

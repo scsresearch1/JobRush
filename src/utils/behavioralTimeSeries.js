@@ -235,6 +235,34 @@ function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v))
 }
 
+/** Detect emotion spikes from emotionCurves + timeAxis. Returns [{ emotion, timeSec, peakProb }] */
+export function detectEmotionSpikesFromCurves(emotionCurves, timeAxis, threshold = 0.5, minConsecutive = 2) {
+  if (!timeAxis?.length || !emotionCurves) return []
+  const spikes = []
+  for (const key of Object.keys(emotionCurves)) {
+    const series = emotionCurves[key] || []
+    let runStart = null
+    let runPeak = 0
+    for (let i = 0; i < series.length; i++) {
+      const v = series[i] ?? 0
+      if (v >= threshold) {
+        if (runStart == null) runStart = i
+        runPeak = Math.max(runPeak, v)
+      } else {
+        if (runStart != null && i - runStart >= minConsecutive) {
+          spikes.push({ emotion: key, timeSec: timeAxis[runStart] ?? 0, peakProb: runPeak })
+        }
+        runStart = null
+        runPeak = 0
+      }
+    }
+    if (runStart != null && series.length - runStart >= minConsecutive) {
+      spikes.push({ emotion: key, timeSec: timeAxis[runStart] ?? 0, peakProb: runPeak })
+    }
+  }
+  return spikes.filter((s) => s.emotion !== 'neutral').sort((a, b) => a.timeSec - b.timeSec).slice(0, 6)
+}
+
 /**
  * Aggregate all question responses into a full behavioral report
  * @param {Array} responses - Array of { question, type, frameMetrics }
@@ -253,6 +281,16 @@ export function buildBehavioralReport(responses) {
   const avgES = mean(questionTimelines.map((q) => q.timeline.summary.emotionalStability ?? 1))
   const avgER = mean(questionTimelines.map((q) => q.timeline.summary.engagementRatio ?? (avgEC + avgFV) / 2))
 
+  const avgEmotionDist = questionTimelines.reduce((acc, q) => {
+    const dist = q.timeline.summary.questionAnalysis?.emotionalProbabilityDistribution || {}
+    for (const k of EMOTION_KEYS) acc[k] = (acc[k] || 0) + (dist[k] ?? 0)
+    return acc
+  }, {})
+  for (const k of EMOTION_KEYS) avgEmotionDist[k] = (avgEmotionDist[k] || 0) / Math.max(1, questionTimelines.length)
+
+  const positiveRatio = (avgEmotionDist.neutral ?? 0) + (avgEmotionDist.happy ?? 0)
+  const stressRatio = (avgEmotionDist.fear ?? 0) + (avgEmotionDist.anger ?? 0) + (avgEmotionDist.sadness ?? 0)
+
   const overall = {
     totalQuestions: questionTimelines.length,
     totalDurationSec: questionTimelines.reduce((s, q) => s + q.timeline.durationSec, 0),
@@ -264,6 +302,9 @@ export function buildBehavioralReport(responses) {
     avgEngagementRatio: avgER,
     confidence: computeConfidenceScore(avgEC, avgHS, avgFV, avgES, avgER),
     confidenceComponents: { EC: avgEC, HS: avgHS, FV: avgFV, ES: avgES, ER: avgER },
+    avgEmotionDistribution: avgEmotionDist,
+    positiveExpressionRatio: positiveRatio,
+    stressIndicatorRatio: stressRatio,
   }
 
   return {
@@ -286,14 +327,21 @@ export function generateLocalInterviewTips(report) {
   const es = overall.avgEmotionalStability ?? 1
   const br = overall.avgBlinkRate ?? 0
   const confidence = overall.confidence ?? 0
+  const posRatio = overall.positiveExpressionRatio ?? 1
+  const stressRatio = overall.stressIndicatorRatio ?? 0
+  const dist = overall.avgEmotionDistribution ?? {}
   const tips = []
 
   if (ec < 0.5) tips.push({ tip: 'Look at the camera more often—aim for at least 50% eye contact during your answers.', area: 'eye-contact', priority: 1 })
   if (fv < 0.7) tips.push({ tip: 'Keep your face centered in the frame. Avoid turning away or moving out of view.', area: 'visibility', priority: 2 })
   if (hs < 0.6) tips.push({ tip: 'Try to keep your head steadier. Excessive nodding or movement can distract the interviewer.', area: 'stability', priority: 3 })
   if (es < 0.7) tips.push({ tip: 'Maintain a calm, consistent expression. Avoid sudden shifts in facial expression mid-answer.', area: 'expression', priority: 4 })
-  if (br > 0.5) tips.push({ tip: 'Your blink rate is elevated—take a breath before answering to help you relax.', area: 'general', priority: 5 })
-  if (confidence < 50) tips.push({ tip: 'Practice your answers beforehand. Confidence grows with preparation.', area: 'general', priority: 6 })
+  if (stressRatio > 0.15) tips.push({ tip: 'Take a breath before answering—nerves can show in your expression. A slight smile can convey confidence.', area: 'expression', priority: 4 })
+  if ((dist.happy ?? 0) < 0.05 && (dist.neutral ?? 0) < 0.8) tips.push({ tip: 'A slight smile can convey confidence and warmth. Practice a natural, relaxed expression.', area: 'expression', priority: 5 })
+  if ((dist.fear ?? 0) > 0.2 || (dist.surprise ?? 0) > 0.25) tips.push({ tip: 'Calm nerves with a brief pause before answering. Deep breathing helps steady your expression.', area: 'expression', priority: 5 })
+  if (br > 0.5) tips.push({ tip: 'Your blink rate is elevated—take a breath before answering to help you relax.', area: 'general', priority: 6 })
+  if (confidence < 50) tips.push({ tip: 'Practice your answers beforehand. Confidence grows with preparation.', area: 'general', priority: 7 })
+  if (posRatio < 0.7) tips.push({ tip: 'Aim for a calm, composed expression. Neutral and slight positive expressions read as confident.', area: 'expression', priority: 6 })
 
   if (tips.length === 0) {
     tips.push(
