@@ -341,7 +341,7 @@ app.post('/api/interview-recommendations', async (req, res) => {
       const qec = safeFix(safeNum(s.meanEyeContactRatio, 0) * 100, 0)
       const qfv = safeFix(safeNum(s.meanFaceVisibility, 0) * 100, 0)
       const qDist = s.questionAnalysis?.emotionalProbabilityDistribution || {}
-      const qEmo = Object.entries(qDist).filter(([, v]) => v > 0.1).map(([k, v]) => `${k} ${safeFix((v ?? 0) * 100, 0)}%`).join(', ') || s.dominantEmotion ?? 'N/A'
+      const qEmo = (Object.entries(qDist).filter(([, v]) => v > 0.1).map(([k, v]) => `${k} ${safeFix((v ?? 0) * 100, 0)}%`).join(', ') || s.dominantEmotion) ?? 'N/A'
       return `Q${i + 1} (${q?.type ?? 'unknown'}): confidence ${s.confidence ?? 0}, eye-contact ${qec}%, visibility ${qfv}%, emotions: ${qEmo}`
     }).join('; ') || 'None'
     const posRatio = safeFix((overall.positiveExpressionRatio ?? 1) * 100, 0)
