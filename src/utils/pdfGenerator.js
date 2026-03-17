@@ -533,16 +533,25 @@ function sanitizeResumeForPDF(parsed) {
   return out
 }
 
+const PARSED_RESUME_DESIGNS = {
+  classic: { primary: '#0ea5e9', name: 'Classic Blue', desc: 'Clean, ATS-friendly with sky blue accent' },
+  modern: { primary: '#6366f1', name: 'Modern Indigo', desc: 'Contemporary look with indigo header' },
+  professional: { primary: '#374151', name: 'Professional Slate', desc: 'Formal gray for corporate roles' },
+}
+
 /**
  * Generate PDF from parsed resume data (for Resume Upload / ATS improvements)
  * @param {Object} parsed - Parsed resume { name, email, phone, skills, experience, education, projects }
+ * @param {string} design - 'classic' | 'modern' | 'professional' (default: classic)
  */
-export const generateParsedResumePDF = (parsed) => {
+export const generateParsedResumePDF = (parsed, design = 'classic') => {
   if (!parsed) return null
+
+  const designConfig = PARSED_RESUME_DESIGNS[design] || PARSED_RESUME_DESIGNS.classic
+  const primary = designConfig.primary
 
   const data = sanitizeResumeForPDF(parsed)
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const primary = '#0ea5e9'
   const margin = 15
   const pageWidth = 210 - 2 * margin
   let y = 15
@@ -705,3 +714,5 @@ export const generateParsedResumePDF = (parsed) => {
   doc.save(filename)
   return filename
 }
+
+export { PARSED_RESUME_DESIGNS }

@@ -6,7 +6,9 @@ import {
   CheckCircleIcon,
   ArrowPathIcon,
   DocumentMagnifyingGlassIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline'
+import DownloadResumeModal from '../components/DownloadResumeModal.jsx'
 import { getRecommendations, applyCorrection, pingHealth } from '../services/groqService.js'
 import { evaluateResume } from '../ats/index.js'
 import { getDisplayLines } from '../utils/cleanAiText.js'
@@ -22,6 +24,7 @@ const STORAGE_KEY = 'jobRush_parsed_resume'
 
 const ResumeImprovements = () => {
   const [resume, setResume] = useState(null)
+  const [showDownloadModal, setShowDownloadModal] = useState(false)
   const [applied, setApplied] = useState({})
   const [recommendations, setRecommendations] = useState(FALLBACK_RECOMMENDATIONS)
   const [loading, setLoading] = useState(true)
@@ -118,14 +121,26 @@ const ResumeImprovements = () => {
               Targeted suggestions from AI based on your resume and ATS evaluation.
             </p>
           </div>
-          {resume && Object.keys(applied).length > 0 && (
-            <Link
-              to="/resume-upload"
-              className="inline-flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium shrink-0"
-            >
-              <DocumentMagnifyingGlassIcon className="w-5 h-5" />
-              View updated resume
-            </Link>
+          {resume && (
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowDownloadModal(true)}
+                className="inline-flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700 transition"
+              >
+                <ArrowDownTrayIcon className="w-5 h-5" />
+                Download PDF
+              </button>
+              {Object.keys(applied).length > 0 && (
+                <Link
+                  to="/resume-upload"
+                  className="inline-flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium"
+                >
+                  <DocumentMagnifyingGlassIcon className="w-5 h-5" />
+                  View updated resume
+                </Link>
+              )}
+            </div>
           )}
         </div>
 
@@ -254,6 +269,12 @@ const ResumeImprovements = () => {
           ))}
         </div>
       </div>
+
+      <DownloadResumeModal
+        isOpen={showDownloadModal}
+        onClose={() => setShowDownloadModal(false)}
+        resume={resume}
+      />
     </div>
   )
 }

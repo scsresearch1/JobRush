@@ -126,6 +126,9 @@ app.post('/api/recommendations', async (req, res) => {
     const userPrompt = `Based on this resume and ATS evaluation, generate 4-6 improvement recommendations.
 
 Resume summary:
+- Name: ${resume?.name || '—'}
+- Email: ${resume?.email || '—'}
+- Phone: ${resume?.phone || '—'}
 - Skills: ${(resume?.skills || []).join(', ') || 'None'}
 - Experience: ${(resume?.experience || []).map(e => `${e.role || e.title} at ${e.company}`).join('; ') || 'None'}
 - Education: ${(resume?.education || []).map(e => e.degree).join('; ') || 'None'}
@@ -158,6 +161,27 @@ Respond in JSON array format only, no other text:
   }
 })
 
+/** Merge LLM output with original resume - never lose name, email, phone, or any entry */
+function mergeResumePreservingOriginal(original, modified) {
+  const out = { ...modified }
+  out.name = (modified.name || '').trim() || (original.name || '').trim()
+  out.email = (modified.email || '').trim() || (original.email || '').trim()
+  out.phone = (modified.phone || '').trim() || (original.phone || '').trim()
+  const origSkills = original.skills || []
+  const modSkills = modified.skills || []
+  out.skills = modSkills.length >= origSkills.length ? modSkills : [...origSkills]
+  const origExp = original.experience || []
+  const modExp = modified.experience || []
+  out.experience = modExp.length >= origExp.length ? modExp : origExp.map((e, i) => ({ ...e, ...(modExp[i] || {}) }))
+  const origEdu = original.education || []
+  const modEdu = modified.education || []
+  out.education = modEdu.length >= origEdu.length ? modEdu : origEdu.map((e, i) => ({ ...e, ...(modEdu[i] || {}) }))
+  const origProj = original.projects || []
+  const modProj = modified.projects || []
+  out.projects = modProj.length >= origProj.length ? modProj : origProj.map((e, i) => ({ ...e, ...(modProj[i] || {}) }))
+  return out
+}
+
 /**
  * POST /api/apply-correction
  * Body: { resume, recommendation }
@@ -170,13 +194,21 @@ app.post('/api/apply-correction', async (req, res) => {
       return res.status(400).json({ error: 'resume and recommendation required' })
     }
 
-    const systemPrompt = `You are a resume editor. Given a resume (JSON) and an improvement suggestion, return the modified resume as valid JSON. Apply ONLY the suggested change. Preserve all other fields. Output the complete resume JSON only, no other text.`
+    const systemPrompt = `You are a resume editor. Given a resume (JSON) and an improvement suggestion, return the modified resume as valid JSON.
+
+CRITICAL RULES:
+- Apply ONLY the suggested change to the indicated section. Leave all other sections UNCHANGED.
+- You MUST include every field from the original resume: name, email, phone, skills, experience, education, projects.
+- NEVER omit name, email, or phone. Copy them exactly from the input.
+- NEVER remove or drop any experience entry, education entry, or project. Only ADD or EDIT within the suggested section.
+- Output the complete resume JSON only, no other text.`
+
     const userPrompt = `Resume:
 ${JSON.stringify(resume, null, 2)}
 
 Suggestion (${recommendation.section}): ${recommendation.suggestion}
 
-Return the modified resume as valid JSON. Apply the suggestion. Output JSON only.`
+Return the modified resume as valid JSON. Apply the suggestion. Preserve name, email, phone, and all other entries. Output JSON only.`
 
     const raw = await callGroq(systemPrompt, userPrompt)
     let modified = resume
@@ -184,10 +216,7 @@ Return the modified resume as valid JSON. Apply the suggestion. Output JSON only
       const jsonMatch = raw.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         modified = JSON.parse(jsonMatch[0])
-        if (!modified.skills) modified.skills = resume.skills || []
-        if (!modified.experience) modified.experience = resume.experience || []
-        if (!modified.education) modified.education = resume.education || []
-        if (!modified.projects) modified.projects = resume.projects || []
+        modified = mergeResumePreservingOriginal(resume, modified)
       }
     } catch {
       modified = resume

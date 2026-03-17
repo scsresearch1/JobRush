@@ -17,12 +17,13 @@ import {
   CpuChipIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline'
-import { generateParsedResumePDF } from '../utils/pdfGenerator.js'
+import DownloadResumeModal from '../components/DownloadResumeModal.jsx'
 import { Link } from 'react-router-dom'
 
 const ResumeUpload = () => {
   const navigate = useNavigate()
   const [file, setFile] = useState(null)
+  const [showDownloadModal, setShowDownloadModal] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [isParsing, setIsParsing] = useState(false)
   const [parsedData, setParsedData] = useState(null)
@@ -308,7 +309,7 @@ const ResumeUpload = () => {
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <button
-                    onClick={() => generateParsedResumePDF(parsedData)}
+                    onClick={() => setShowDownloadModal(true)}
                     className="flex items-center gap-2 bg-gradient-to-r from-primary-600 to-primary-700 text-white px-6 py-3 rounded-xl font-semibold hover:from-primary-700 hover:to-primary-800 transition shadow-lg"
                   >
                     <ArrowDownTrayIcon className="w-5 h-5" />
@@ -390,6 +391,12 @@ const ResumeUpload = () => {
           )}
         </div>
       </div>
+
+      <DownloadResumeModal
+        isOpen={showDownloadModal}
+        onClose={() => setShowDownloadModal(false)}
+        resume={parsedData}
+      />
     </div>
   )
 }
