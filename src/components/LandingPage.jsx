@@ -92,12 +92,12 @@ const LandingPage = ({ onStartJourney }) => {
               <div className="w-10 h-10 bg-gradient-to-br from-primary-600 to-primary-400 rounded-lg flex items-center justify-center shrink-0">
                 <BriefcaseIcon className="w-6 h-6 text-white" />
               </div>
-              <span className="text-xl sm:text-2xl font-bold gradient-text">JobRush</span>
+              <span className="text-xl sm:text-2xl font-bold gradient-text">JobRush.ai</span>
             </div>
             <div className="hidden md:flex items-center space-x-8">
               <a href="#features" className="text-gray-700 hover:text-primary-600 transition">Features</a>
               <a href="#benefits" className="text-gray-700 hover:text-primary-600 transition">Benefits</a>
-              <a href="#about" className="text-gray-700 hover:text-primary-600 transition">About</a>
+              <Link to="/about" className="text-gray-700 hover:text-primary-600 transition">About</Link>
               {isLoggedIn ? (
                 <Link to="/dashboard" className="bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition shadow-lg hover:shadow-xl">
                   Dashboard
@@ -121,7 +121,7 @@ const LandingPage = ({ onStartJourney }) => {
             <div className="md:hidden py-4 border-t border-gray-200 flex flex-col gap-1">
               <a href="#features" onClick={() => setMobileNavOpen(false)} className="px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg">Features</a>
               <a href="#benefits" onClick={() => setMobileNavOpen(false)} className="px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg">Benefits</a>
-              <a href="#about" onClick={() => setMobileNavOpen(false)} className="px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg">About</a>
+              <Link to="/about" onClick={() => setMobileNavOpen(false)} className="px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg">About</Link>
               {isLoggedIn ? (
                 <Link to="/dashboard" onClick={() => setMobileNavOpen(false)} className="mx-4 mt-2 bg-primary-600 text-white px-6 py-3 rounded-lg text-center font-medium">
                   Dashboard
@@ -152,7 +152,7 @@ const LandingPage = ({ onStartJourney }) => {
             </div>
             <h1 className="text-5xl md:text-7xl font-bold mb-6">
               Land Your Dream Job with
-              <span className="block gradient-text mt-2">JobRush</span>
+              <span className="block gradient-text mt-2">JobRush.ai</span>
             </h1>
             <p className="text-xl md:text-2xl text-gray-600 mb-8 max-w-3xl mx-auto">
               Your career acceleration platform. Land your dream job faster.
@@ -238,7 +238,7 @@ const LandingPage = ({ onStartJourney }) => {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
               <h2 className="text-4xl md:text-5xl font-bold mb-6">
-                Why Choose <span className="gradient-text">JobRush</span>?
+                Why Choose <span className="gradient-text">JobRush.ai</span>?
               </h2>
               <p className="text-xl text-gray-700 mb-8">
                 We've built a comprehensive platform that covers resume optimization, ATS compatibility, and AI-powered mock interviews to accelerate your job search.
@@ -294,7 +294,7 @@ const LandingPage = ({ onStartJourney }) => {
             Ready to Transform Your Career?
           </h2>
           <p className="text-xl text-primary-100 mb-8">
-            Join thousands who have accelerated their careers with JobRush
+            Join thousands who have accelerated their careers with JobRush.ai
           </p>
           <button onClick={onStartJourney} className="bg-white text-primary-600 px-10 py-4 rounded-xl text-lg font-semibold hover:bg-gray-100 transition shadow-2xl transform hover:scale-105 flex items-center space-x-2 mx-auto">
             <span>Get Started Free</span>
@@ -306,45 +306,35 @@ const LandingPage = ({ onStartJourney }) => {
       {/* Footer */}
       <footer className="bg-gray-900 text-gray-300 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-4 gap-8">
+          <div className="grid md:grid-cols-3 gap-8">
             <div>
               <div className="flex items-center space-x-2 mb-4">
                 <div className="w-10 h-10 bg-gradient-to-br from-primary-600 to-primary-400 rounded-lg flex items-center justify-center">
                   <BriefcaseIcon className="w-6 h-6 text-white" />
                 </div>
-                <span className="text-xl font-bold text-white">JobRush</span>
+                <span className="text-xl font-bold text-white">JobRush.ai</span>
               </div>
               <p className="text-gray-400">
                 Your career acceleration platform.
               </p>
             </div>
             <div>
-              <h3 className="text-white font-semibold mb-4">Product</h3>
-              <ul className="space-y-2">
-                <li><a href="#" className="hover:text-white transition">Features</a></li>
-                <li><a href="#" className="hover:text-white transition">Pricing</a></li>
-                <li><a href="#" className="hover:text-white transition">Resources</a></li>
-              </ul>
-            </div>
-            <div>
               <h3 className="text-white font-semibold mb-4">Company</h3>
               <ul className="space-y-2">
-                <li><a href="#" className="hover:text-white transition">About</a></li>
-                <li><a href="#" className="hover:text-white transition">Blog</a></li>
-                <li><a href="#" className="hover:text-white transition">Careers</a></li>
+                <li><Link to="/about" className="hover:text-white transition">About</Link></li>
+                <li><span className="text-gray-500">Careers — Coming Soon</span></li>
               </ul>
             </div>
             <div>
               <h3 className="text-white font-semibold mb-4">Support</h3>
               <ul className="space-y-2">
                 <li><a href="#" className="hover:text-white transition">Help Center</a></li>
-                <li><a href="#" className="hover:text-white transition">Contact</a></li>
-                <li><a href="#" className="hover:text-white transition">Privacy</a></li>
+                <li><span className="text-gray-400 text-sm">Privacy: All data is stored using blockchain—highly confidential.</span></li>
               </ul>
             </div>
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 JobRush. All rights reserved.</p>
+            <p>&copy; 2024 JobRush.ai. All rights reserved.</p>
           </div>
         </div>
       </footer>

@@ -1,5 +1,5 @@
 /**
- * JobRush - Firebase Realtime Database Schema
+ * JobRush.ai - Firebase Realtime Database Schema
  *
  * Use these constants when reading/writing from any page.
  *

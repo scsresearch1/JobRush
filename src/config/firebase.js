@@ -1,5 +1,5 @@
 /**
- * JobRush - Firebase Configuration
+ * JobRush.ai - Firebase Configuration
  *
  * Central config for Firebase Realtime Database access across the app.
  * Add your Firebase web config from: Firebase Console → Project Settings → General → Your apps

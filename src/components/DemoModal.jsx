@@ -158,7 +158,7 @@ const DemoModal = ({ isOpen, onClose }) => {
             <XMarkIcon className="w-6 h-6" />
           </button>
           <h2 className="text-3xl font-bold text-white mb-2">Your Career Journey</h2>
-          <p className="text-primary-100">Experience the complete JobRush platform</p>
+          <p className="text-primary-100">Experience the complete JobRush.ai platform</p>
           
           {/* Progress Bar */}
           <div className="mt-4 h-2 bg-white/20 rounded-full overflow-hidden">

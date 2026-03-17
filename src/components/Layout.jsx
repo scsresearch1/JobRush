@@ -31,7 +31,7 @@ const Layout = ({ children }) => {
               <div className="w-10 h-10 bg-gradient-to-br from-primary-600 to-primary-400 rounded-lg flex items-center justify-center">
                 <BriefcaseIcon className="w-6 h-6 text-white" />
               </div>
-              <span className="text-xl sm:text-2xl font-bold gradient-text">JobRush</span>
+              <span className="text-xl sm:text-2xl font-bold gradient-text">JobRush.ai</span>
             </Link>
             <div className="hidden md:flex items-center space-x-6">
               {user?.isAuthenticated && (

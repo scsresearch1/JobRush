@@ -1,4 +1,4 @@
-# Firebase Setup for JobRush
+# Firebase Setup for JobRush.ai
 
 To push UniqueID and EmailID to Firebase Realtime Database, you need to configure the Firebase Web SDK.
 
@@ -7,7 +7,7 @@ To push UniqueID and EmailID to Firebase Realtime Database, you need to configur
 ### 1. Get Firebase Web Config
 
 1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Select your **JobRush** project (jobrush-f2eb4)
+2. Select your **JobRush.ai** project (jobrush-f2eb4)
 3. Click the **gear icon** → **Project settings**
 4. Scroll to **Your apps** → Click **</>** (Web) to add a web app (or use existing)
 5. Copy the `firebaseConfig` object

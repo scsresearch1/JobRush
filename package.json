@@ -2,7 +2,7 @@
   "name": "jobrush",
   "version": "1.0.0",
   "type": "module",
-  "description": "JobRush - Your Career Acceleration Platform",
+  "description": "JobRush.ai - Your Career Acceleration Platform",
   "overrides": {
     "@tootallnate/once": "^3.0.1",
     "dompurify": "^3.2.4",

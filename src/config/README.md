@@ -1,4 +1,4 @@
-# JobRush Database Configuration
+# JobRush.ai Database Configuration
 
 ## Adding New Fields or Collections
 

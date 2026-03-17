@@ -1,5 +1,5 @@
 /**
- * Transform OpenResume parser output to JobRush ATS format
+ * Transform OpenResume parser output to JobRush.ai ATS format
  * Maps profile, workExperiences, educations, projects, skills to our schema
  */
 

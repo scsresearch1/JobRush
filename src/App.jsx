@@ -9,6 +9,7 @@ import ResumeImprovements from './pages/ResumeImprovements'
 import SOPCoverLetter from './pages/SOPCoverLetter'
 import MockInterview from './pages/MockInterview'
 import Profile from './pages/Profile'
+import AboutPage from './pages/AboutPage'
 import TransitionPage from './components/TransitionPage'
 import EmailCaptureModal from './components/EmailCaptureModal'
 
@@ -57,6 +58,7 @@ function App() {
       />
       <Routes>
         <Route path="/" element={<LandingPage onStartJourney={handleStartJourney} />} />
+        <Route path="/about" element={<AboutPage />} />
         <Route
           path="/dashboard"
           element={

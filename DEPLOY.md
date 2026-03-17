@@ -1,4 +1,4 @@
-# JobRush Deployment (Netlify + Render)
+# JobRush.ai Deployment (Netlify + Render)
 
 ## Architecture
 

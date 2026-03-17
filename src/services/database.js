@@ -1,5 +1,5 @@
 /**
- * JobRush - Database Service
+ * JobRush.ai - Database Service
  *
  * Centralized access to Firebase Realtime Database.
  * Import this in any page/component to read or write data.

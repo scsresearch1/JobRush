@@ -1,4 +1,4 @@
-# Netlify config for JobRush frontend
+# Netlify config for JobRush.ai frontend
 [build]
   command = "npm run build"
   publish = "dist"

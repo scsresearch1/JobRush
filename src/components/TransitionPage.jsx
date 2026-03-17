@@ -47,7 +47,7 @@ const TransitionPage = ({ onComplete }) => {
           stage >= 3 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
         }`}>
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
-            Welcome to JobRush
+            Welcome to JobRush.ai
           </h2>
           <p className="text-xl text-primary-100">
             Get ready to upload your resume

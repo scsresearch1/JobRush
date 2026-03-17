@@ -360,7 +360,7 @@ export default function BehavioralReport({ responses }) {
       </section>
 
       <footer className="report-footer">
-        <p>JobRush Mock Interview · Behavioral metrics are computed locally. No video or biometric data is transmitted.</p>
+        <p>JobRush.ai Mock Interview · Behavioral metrics are computed locally. No video or biometric data is transmitted.</p>
       </footer>
     </article>
   )
