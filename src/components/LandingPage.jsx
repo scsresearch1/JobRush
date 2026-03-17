@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline'
 import DemoModal from './DemoModal'
 import AnimatedCounter from './AnimatedCounter'
+import { useHelpCenter } from '../context/HelpCenterContext'
 
 const SparklesIconSVG = () => (
   <svg className="w-7 h-7 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -21,6 +22,7 @@ const SparklesIconSVG = () => (
 )
 
 const LandingPage = ({ onStartJourney }) => {
+  const { openChatbot } = useHelpCenter()
   const [isDemoOpen, setIsDemoOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const isLoggedIn = typeof window !== 'undefined' && JSON.parse(localStorage.getItem('jobRush_user') || '{}')?.isAuthenticated
@@ -98,6 +100,7 @@ const LandingPage = ({ onStartJourney }) => {
               <a href="#features" className="text-gray-700 hover:text-primary-600 transition">Features</a>
               <a href="#benefits" className="text-gray-700 hover:text-primary-600 transition">Benefits</a>
               <Link to="/about" className="text-gray-700 hover:text-primary-600 transition">About</Link>
+              <button type="button" onClick={openChatbot} className="text-gray-700 hover:text-primary-600 transition">Help Center</button>
               {isLoggedIn ? (
                 <Link to="/dashboard" className="bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition shadow-lg hover:shadow-xl">
                   Dashboard
@@ -122,6 +125,7 @@ const LandingPage = ({ onStartJourney }) => {
               <a href="#features" onClick={() => setMobileNavOpen(false)} className="px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg">Features</a>
               <a href="#benefits" onClick={() => setMobileNavOpen(false)} className="px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg">Benefits</a>
               <Link to="/about" onClick={() => setMobileNavOpen(false)} className="px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg">About</Link>
+              <button type="button" onClick={() => { openChatbot(); setMobileNavOpen(false) }} className="px-4 py-3 text-left text-gray-700 hover:bg-gray-100 rounded-lg">Help Center</button>
               {isLoggedIn ? (
                 <Link to="/dashboard" onClick={() => setMobileNavOpen(false)} className="mx-4 mt-2 bg-primary-600 text-white px-6 py-3 rounded-lg text-center font-medium">
                   Dashboard
@@ -322,14 +326,14 @@ const LandingPage = ({ onStartJourney }) => {
               <h3 className="text-white font-semibold mb-4">Company</h3>
               <ul className="space-y-2">
                 <li><Link to="/about" className="hover:text-white transition">About</Link></li>
-                <li><span className="text-gray-500">Careers — Coming Soon</span></li>
+                <li><Link to="/careers" className="hover:text-white transition">Careers — Coming Soon</Link></li>
               </ul>
             </div>
             <div>
               <h3 className="text-white font-semibold mb-4">Support</h3>
               <ul className="space-y-2">
-                <li><a href="#" className="hover:text-white transition">Help Center</a></li>
-                <li><span className="text-gray-400 text-sm">Privacy: All data is stored using blockchain—highly confidential.</span></li>
+                <li><button type="button" onClick={openChatbot} className="text-gray-300 hover:text-white transition text-left">Help Center</button></li>
+                <li><Link to="/privacy" className="hover:text-white transition text-sm">Privacy</Link></li>
               </ul>
             </div>
           </div>

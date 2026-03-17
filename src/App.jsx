@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { HelpCenterProvider, useHelpCenter } from './context/HelpCenterContext'
+import HelpCenterChatbot from './components/HelpCenterChatbot'
 import LandingPage from './components/LandingPage'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
@@ -10,6 +12,8 @@ import SOPCoverLetter from './pages/SOPCoverLetter'
 import MockInterview from './pages/MockInterview'
 import Profile from './pages/Profile'
 import AboutPage from './pages/AboutPage'
+import CareersComingSoonPage from './pages/CareersComingSoonPage'
+import PrivacyPage from './pages/PrivacyPage'
 import TransitionPage from './components/TransitionPage'
 import EmailCaptureModal from './components/EmailCaptureModal'
 
@@ -50,15 +54,33 @@ function App() {
   }
 
   return (
+    <HelpCenterProvider>
+      <AppContent
+        showEmailModal={showEmailModal}
+        setShowEmailModal={setShowEmailModal}
+        handleEmailSuccess={handleEmailSuccess}
+        handleStartJourney={handleStartJourney}
+      />
+    </HelpCenterProvider>
+  )
+}
+
+function AppContent({ showEmailModal, setShowEmailModal, handleEmailSuccess, handleStartJourney }) {
+  const { isOpen, openChatbot, closeChatbot } = useHelpCenter()
+
+  return (
     <>
       <EmailCaptureModal
         isOpen={showEmailModal}
         onClose={() => setShowEmailModal(false)}
         onSuccess={handleEmailSuccess}
       />
+      <HelpCenterChatbot isOpen={isOpen} onClose={closeChatbot} />
       <Routes>
         <Route path="/" element={<LandingPage onStartJourney={handleStartJourney} />} />
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/careers" element={<CareersComingSoonPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route
           path="/dashboard"
           element={

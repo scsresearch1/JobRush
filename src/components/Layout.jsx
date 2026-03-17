@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { BriefcaseIcon, HomeIcon, UserIcon, VideoCameraIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'
+import { BriefcaseIcon, HomeIcon, UserIcon, VideoCameraIcon, Bars3Icon, XMarkIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
 import { pingHealth } from '../services/groqService.js'
+import { useHelpCenter } from '../context/HelpCenterContext'
 
 const Layout = ({ children }) => {
   const location = useLocation()
+  const { openChatbot } = useHelpCenter()
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -50,6 +52,14 @@ const Layout = ({ children }) => {
                       <span>{label}</span>
                     </Link>
                   ))}
+                  <button
+                    type="button"
+                    onClick={openChatbot}
+                    className="flex items-center space-x-2 text-gray-700 hover:text-primary-600"
+                  >
+                    <ChatBubbleLeftRightIcon className="w-5 h-5" />
+                    <span>Help Center</span>
+                  </button>
                   <Link
                     to="/profile"
                     className="flex items-center space-x-2 text-gray-700 hover:text-primary-600"
@@ -85,8 +95,17 @@ const Layout = ({ children }) => {
                   {label}
                 </Link>
               ))}
+              <button
+                type="button"
+                onClick={() => { openChatbot(); setMobileMenuOpen(false) }}
+                className="flex items-center gap-2 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 w-full text-left"
+              >
+                <ChatBubbleLeftRightIcon className="w-5 h-5" />
+                Help Center
+              </button>
               <Link
                 to="/profile"
+                onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-2 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100"
               >
                 <UserIcon className="w-5 h-5" />
