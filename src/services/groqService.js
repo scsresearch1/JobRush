@@ -173,3 +173,12 @@ export async function generateCoverLetter(resume, targetRole, targetCompany) {
 export async function getInterviewRecommendations(report) {
   return fetchApi('/api/interview-recommendations', { report })
 }
+
+/**
+ * Selectra chatbot - job and site-related Q&A
+ * @param {Array<{ role: 'user'|'assistant', content: string }>} messages - Conversation history
+ * @returns {Promise<{ reply: string }>}
+ */
+export async function chatSelectra(messages) {
+  return fetchApi('/api/chat', { messages })
+}

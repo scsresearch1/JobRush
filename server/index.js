@@ -48,6 +48,19 @@ async function callGroq(systemPrompt, userPrompt, maxTokens = 1024) {
   return completion.choices[0]?.message?.content?.trim() || ''
 }
 
+async function chatGroq(messages, maxTokens = 1024) {
+  if (!groq) {
+    throw new Error('AI service not configured. Add the required API key to your environment.')
+  }
+  const completion = await groq.chat.completions.create({
+    model: MODEL,
+    messages,
+    max_tokens: maxTokens,
+    temperature: 0.5,
+  })
+  return completion.choices[0]?.message?.content?.trim() || ''
+}
+
 /**
  * POST /api/explain-ats
  * Body: { entity, score, matchedMandatory, missingMandatory, matchedPreferred, missingPreferred, breakdown }
@@ -377,6 +390,51 @@ Generate 4-6 correction tips as JSON array. Be specific to these metrics. Use em
     const status = err.message?.includes('not configured') ? 503 : 500
     res.status(status).json({
       error: err.message || 'Failed to generate recommendations',
+    })
+  }
+})
+
+const SELECTRA_SYSTEM = `You are Selectra, the friendly Help Center assistant for JobRush.ai, a career acceleration platform.
+
+Your role:
+- Answer job-related questions: resume tips, ATS optimization, interview preparation, career advice, cover letters, SOPs, and job search strategies.
+- Answer questions about JobRush.ai: what the platform does, its features (resume upload, ATS scoring, mock interviews, SOP & cover letter generation), how to get started, and general usage.
+- Be helpful, concise, and professional. Use clear paragraphs. You may use bullet points when listing items.
+- Keep responses focused and reasonably brief unless the user asks for detail.
+
+CRITICAL - You must NEVER disclose:
+- Any LLM, AI model, or API provider names (e.g. Groq, Llama, GPT, Claude, etc.)
+- Technology stack, frameworks, programming languages, or implementation details
+- How the system is built or what powers it internally
+
+If asked about technology, architecture, or "what AI" you use, politely decline: "I'm not able to discuss technical implementation details. I'm here to help with career advice and questions about JobRush.ai. How can I assist you?"`
+
+/**
+ * POST /api/chat - Selectra chatbot
+ * Body: { messages: [{ role: 'user'|'assistant', content: string }] }
+ * Returns: { reply: string }
+ */
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { messages } = req.body
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'messages array required' })
+    }
+    const trimmed = messages
+      .filter((m) => m && typeof m.role === 'string' && typeof m.content === 'string')
+      .map((m) => ({ role: m.role, content: String(m.content).trim().slice(0, 8000) }))
+      .filter((m) => m.content.length > 0)
+    if (trimmed.length === 0) {
+      return res.status(400).json({ error: 'messages must have role and content' })
+    }
+    const fullMessages = [{ role: 'system', content: SELECTRA_SYSTEM }, ...trimmed]
+    const reply = await chatGroq(fullMessages, 1024)
+    res.json({ reply })
+  } catch (err) {
+    console.error('chat error:', err)
+    const status = err.message?.includes('not configured') ? 503 : 500
+    res.status(status).json({
+      error: err.message || 'Failed to get reply',
     })
   }
 })
