@@ -570,27 +570,27 @@ const LoadTestPage = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-600 text-left text-slate-400">
-                      <th className="py-2 pr-4 font-medium">Parameter</th>
-                      <th className="py-2 font-mono text-white">Value</th>
+                    <tr className="border-b border-slate-600 text-left">
+                      <th className="py-2 pr-4 font-medium text-slate-200">Parameter</th>
+                      <th className="py-2 font-mono font-medium text-white">Value</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-700/80">
-                    <tr><td className="py-2 pr-4 text-slate-300">Outcome</td><td className="font-mono">{finalReport.outcome === 'completed' ? 'All planned requests completed' : 'Stopped by user (partial run)'}</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Target preset</td><td className="font-mono">{finalReport.config.targetLabel || '—'}</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Target URL</td><td className="font-mono break-all">{finalReport.config.targetUrl}</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">HTTP method</td><td className="font-mono">{finalReport.config.method}</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Planned total requests</td><td className="font-mono">{finalReport.config.totalRequests.toLocaleString()}</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Concurrency (per wave)</td><td className="font-mono">{finalReport.config.concurrency}</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Request timeout</td><td className="font-mono">{finalReport.config.requestTimeoutMs} ms</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Wall duration</td><td className="font-mono">{(finalReport.durationMs / 1000).toFixed(2)} s</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Requests completed</td><td className="font-mono">{finalReport.stats.completed.toLocaleString()}</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Successful</td><td className="font-mono text-emerald-400">{finalReport.stats.success.toLocaleString()}</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Failed</td><td className="font-mono text-red-400">{finalReport.stats.failed.toLocaleString()}</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Success rate</td><td className="font-mono">{finalReport.stats.successRatePct.toFixed(2)}%</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Avg throughput</td><td className="font-mono">{finalReport.overallRps.toFixed(1)} req/s</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Latency min / avg / max</td><td className="font-mono">{finalReport.stats.min.toFixed(0)} / {finalReport.stats.avg.toFixed(0)} / {finalReport.stats.max.toFixed(0)} ms</td></tr>
-                    <tr><td className="py-2 pr-4 text-slate-300">Latency p50 / p95 / p99</td><td className="font-mono">{finalReport.stats.p50.toFixed(0)} / {finalReport.stats.p95.toFixed(0)} / {finalReport.stats.p99.toFixed(0)} ms</td></tr>
+                  <tbody className="divide-y divide-slate-700/80 text-slate-100">
+                    <tr><td className="py-2 pr-4 text-slate-300">Outcome</td><td className="font-mono text-slate-50">{finalReport.outcome === 'completed' ? 'All planned requests completed' : 'Stopped by user (partial run)'}</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Target preset</td><td className="font-mono text-slate-50">{finalReport.config.targetLabel || '—'}</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Target URL</td><td className="font-mono break-all text-slate-50">{finalReport.config.targetUrl}</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">HTTP method</td><td className="font-mono text-slate-50">{finalReport.config.method}</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Planned total requests</td><td className="font-mono text-slate-50">{finalReport.config.totalRequests.toLocaleString()}</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Concurrency (per wave)</td><td className="font-mono text-slate-50">{finalReport.config.concurrency}</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Request timeout</td><td className="font-mono text-slate-50">{finalReport.config.requestTimeoutMs} ms</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Wall duration</td><td className="font-mono text-slate-50">{(finalReport.durationMs / 1000).toFixed(2)} s</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Requests completed</td><td className="font-mono text-slate-50">{finalReport.stats.completed.toLocaleString()}</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Successful</td><td className="font-mono text-emerald-300">{finalReport.stats.success.toLocaleString()}</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Failed</td><td className="font-mono text-red-300">{finalReport.stats.failed.toLocaleString()}</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Success rate</td><td className="font-mono text-slate-50">{finalReport.stats.successRatePct.toFixed(2)}%</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Avg throughput</td><td className="font-mono text-slate-50">{finalReport.overallRps.toFixed(1)} req/s</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Latency min / avg / max</td><td className="font-mono text-slate-50">{finalReport.stats.min.toFixed(0)} / {finalReport.stats.avg.toFixed(0)} / {finalReport.stats.max.toFixed(0)} ms</td></tr>
+                    <tr><td className="py-2 pr-4 text-slate-300">Latency p50 / p95 / p99</td><td className="font-mono text-slate-50">{finalReport.stats.p50.toFixed(0)} / {finalReport.stats.p95.toFixed(0)} / {finalReport.stats.p99.toFixed(0)} ms</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -610,7 +610,7 @@ const LoadTestPage = () => {
                         {Object.entries(finalReport.stats.errors).map(([k, v]) => (
                           <tr key={k} className="border-t border-slate-700">
                             <td className="py-2 px-3 font-mono text-amber-200">{k}</td>
-                            <td className="py-2 px-3 font-mono">{v}</td>
+                            <td className="py-2 px-3 font-mono text-slate-50">{v}</td>
                           </tr>
                         ))}
                       </tbody>
