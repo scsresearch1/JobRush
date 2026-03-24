@@ -16,6 +16,7 @@ import CareersComingSoonPage from './pages/CareersComingSoonPage'
 import PrivacyPage from './pages/PrivacyPage'
 import TransitionPage from './components/TransitionPage'
 import EmailCaptureModal from './components/EmailCaptureModal'
+import LoadTestPage from '../TestingEngine/LoadTestPage.jsx'
 
 function ProtectedRoute({ children }) {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
@@ -81,6 +82,7 @@ function AppContent({ showEmailModal, setShowEmailModal, handleEmailSuccess, han
         <Route path="/about" element={<AboutPage />} />
         <Route path="/careers" element={<CareersComingSoonPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/load-test" element={<LoadTestPage />} />
         <Route
           path="/dashboard"
           element={
