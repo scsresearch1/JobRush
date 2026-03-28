@@ -13,6 +13,12 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
 }
 
+/** False when the admin bundle was built without a real web API key (common on Netlify if env vars are missing). */
+export function isFirebaseWebConfigReady() {
+  const k = firebaseConfig.apiKey
+  return Boolean(k && k !== 'your-api-key')
+}
+
 const app = initializeApp(firebaseConfig)
 export const database = getDatabase(app)
 export default app

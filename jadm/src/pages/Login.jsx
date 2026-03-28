@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { LockClosedIcon, ShieldCheckIcon, UserIcon } from '@heroicons/react/24/outline'
+import { isFirebaseWebConfigReady } from '../config/firebase'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
@@ -43,6 +44,12 @@ export default function Login() {
           <h1 className="text-2xl font-bold text-white">JobRush Admin</h1>
           <p className="text-admin-300 text-sm mt-2">Sign in with admin username and password from Firebase</p>
         </div>
+        {!isFirebaseWebConfigReady() && (
+          <div className="mb-4 rounded-xl border border-amber-700/80 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
+            This build has no <code className="text-amber-100">VITE_FIREBASE_API_KEY</code>. Add your Firebase web
+            variables to Netlify (or root <code className="text-amber-100">.env.local</code> locally) and redeploy.
+          </div>
+        )}
         <form
           onSubmit={handleSubmit}
           className="bg-admin-900/90 border border-admin-700 rounded-2xl p-8 shadow-xl"

@@ -1,10 +1,31 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { isFirebaseWebConfigReady } from '../config/firebase'
 import { getAdminCredentials, saveAdminCredentials } from '../services/adminDb'
 
 const SESSION_KEY = 'jadm_admin_session'
 const SESSION_EXPIRY_MS = 8 * 60 * 60 * 1000 // 8 hours
 
 const AuthContext = createContext(null)
+
+function messageForFirebaseError(err) {
+  const code = err?.code || ''
+  const msg = String(err?.message || '')
+  if (
+    code === 'permission_denied' ||
+    code === 'PERMISSION_DENIED' ||
+    msg.includes('permission_denied') ||
+    msg.includes('Permission denied')
+  ) {
+    return 'Firebase blocked read access to admin credentials. In Realtime Database → Rules, allow read (and write for password changes) on adminPortal/credentials for your setup, then try again.'
+  }
+  if (code === 'unavailable' || msg.includes('network') || msg.includes('Network')) {
+    return 'Firebase is unreachable. Check your connection and try again.'
+  }
+  if (!isFirebaseWebConfigReady()) {
+    return 'Firebase web config is missing (VITE_FIREBASE_API_KEY). Add the same VITE_FIREBASE_* variables you use for the main app to Netlify → Site settings → Environment variables, then trigger a new deploy.'
+  }
+  return 'Could not load admin credentials from Firebase. Check the browser console, Netlify env vars, and database rules.'
+}
 
 export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false)
@@ -56,7 +77,7 @@ export function AuthProvider({ children }) {
       return { ok: true }
     } catch (e) {
       console.error('[jadm] login', e)
-      return { ok: false, error: 'Could not reach Firebase. Check config and network.' }
+      return { ok: false, error: messageForFirebaseError(e) }
     }
   }, [])
 
@@ -81,7 +102,7 @@ export function AuthProvider({ children }) {
       return { ok: true }
     } catch (e) {
       console.error('[jadm] changePassword', e)
-      return { ok: false, error: 'Could not update password. Check Firebase rules and network.' }
+      return { ok: false, error: messageForFirebaseError(e) }
     }
   }, [])
 
