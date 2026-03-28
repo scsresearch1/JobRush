@@ -43,6 +43,14 @@ const COLLECTION_STRUCTURE = {
     fields: ['userId', 'report', 'recommendations', 'generatedAt'],
     seedDocuments: [], // Reports pushed by client via push()
   },
+  adminPortal: {
+    description:
+      'JobRush admin portal (jadm) login — username/password. Lock down RTDB rules so only trusted clients can read/write this path.',
+    fields: ['username', 'password'],
+    seedDocuments: [
+      { id: 'credentials', data: { username: 'jadm', password: 'JBRush@2026' } },
+    ],
+  },
 }
 
 // =============================================================================
