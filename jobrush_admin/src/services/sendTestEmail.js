@@ -15,7 +15,8 @@ export async function sendTestEmail({ toEmail, draft }) {
   }
 
   const controller = new AbortController()
-  const timeoutMs = 30000
+  /** Render cold starts + Gmail SMTP can exceed 30s; avoid false “API down” errors. */
+  const timeoutMs = 120000
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   let res
@@ -32,7 +33,7 @@ export async function sendTestEmail({ toEmail, draft }) {
   } catch (e) {
     if (e?.name === 'AbortError') {
       throw new Error(
-        `Request timed out after ${timeoutMs / 1000}s. Is the API up (${apiBase()})? Redeploy Netlify after setting VITE_ADMIN_API_SECRET.`
+        `Request timed out after ${timeoutMs / 1000}s. If the API is on Render free tier it may be waking from sleep — try again in a minute. Open ${apiBase()}/api/health in a new tab to confirm the service is up.`
       )
     }
     throw e

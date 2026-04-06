@@ -10,6 +10,18 @@ import cors from 'cors'
 import Groq from 'groq-sdk'
 import nodemailer from 'nodemailer'
 
+/** Avoid hanging forever on blocked outbound SMTP (Render ↔ Gmail). */
+const SMTP_SOCKET_MS = 25_000
+
+function createSmtpTransport(opts) {
+  return nodemailer.createTransport({
+    ...opts,
+    connectionTimeout: SMTP_SOCKET_MS,
+    greetingTimeout: SMTP_SOCKET_MS,
+    socketTimeout: SMTP_SOCKET_MS,
+  })
+}
+
 /** Same RTDB as client/admin (jobrush_client/src/config/firebaseJobbrushDefaults.js). Override with FIREBASE_DATABASE_URL if needed. */
 const DEFAULT_FIREBASE_RTDB_URL =
   'https://jobrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
@@ -604,7 +616,7 @@ async function resolveMailer() {
     process.env.MAIL_FROM ||
     (db && String(db.mailFrom || '').trim()) ||
     user
-  const transport = nodemailer.createTransport({ host, port, secure, auth: { user, pass } })
+  const transport = createSmtpTransport({ host, port, secure, auth: { user, pass } })
   return { transport, from }
 }
 
@@ -713,7 +725,7 @@ function buildMailerFromDraft(d) {
   const port = Number(d.smtpPort) || 587
   const secure = d.smtpSecure === true
   const from = String(d.mailFrom || '').trim() || user
-  const transport = nodemailer.createTransport({ host, port, secure, auth: { user, pass } })
+  const transport = createSmtpTransport({ host, port, secure, auth: { user, pass } })
   return { transport, from }
 }
 
