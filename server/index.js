@@ -8,6 +8,7 @@ config({ path: resolve(process.cwd(), '.env') })
 import express from 'express'
 import cors from 'cors'
 import Groq from 'groq-sdk'
+import nodemailer from 'nodemailer'
 
 const app = express()
 
@@ -18,12 +19,14 @@ app.use((req, res, next) => {
   const allow = origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.netlify.app')) ? origin : '*'
   res.setHeader('Access-Control-Allow-Origin', allow)
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   res.setHeader('Access-Control-Max-Age', '86400')
   if (req.method === 'OPTIONS') return res.status(204).end()
   next()
 })
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Content-Type'] }))
+app.use(
+  cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] })
+)
 app.use(express.json({ limit: '1mb' }))
 
 const groq = process.env.GROQ_API_KEY
@@ -471,6 +474,104 @@ app.post('/api/chat', async (req, res) => {
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, llm: !!groq, tts: !!textToSpeechClient })
+})
+
+function createMailTransport() {
+  const host = process.env.SMTP_HOST
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+  if (!host || !user || !pass) return null
+  const port = Number(process.env.SMTP_PORT || 587)
+  const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true'
+  return nodemailer.createTransport({ host, port, secure, auth: { user, pass } })
+}
+
+/**
+ * POST /api/admin/notify-payment-decision
+ * Header: Authorization: Bearer ADMIN_API_SECRET
+ * Body: { toEmail, decision: "approved"|"rejected", paymentReference?, userLabel? }
+ */
+app.post('/api/admin/notify-payment-decision', async (req, res) => {
+  const expected = process.env.ADMIN_API_SECRET
+  const hdr = req.headers.authorization || ''
+  if (!expected || hdr !== `Bearer ${expected}`) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  const { toEmail, decision, paymentReference, userLabel } = req.body || {}
+  const email = String(toEmail || '').trim()
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Invalid toEmail' })
+  }
+  const d = decision === 'approved' || decision === 'rejected' ? decision : null
+  if (!d) {
+    return res.status(400).json({ error: 'decision must be approved or rejected' })
+  }
+
+  const transport = createMailTransport()
+  if (!transport) {
+    return res.status(503).json({
+      error: 'Email is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and MAIL_FROM on the API server.',
+    })
+  }
+
+  const from = process.env.MAIL_FROM || process.env.SMTP_USER
+  const subject =
+    d === 'approved' ? 'JobRush — your access is active' : 'JobRush — payment verification update'
+  const refLine = paymentReference ? `Reference you submitted: ${paymentReference}\n\n` : ''
+  const greeting = userLabel ? `Hello ${userLabel},\n\n` : 'Hello,\n\n'
+  const text =
+    d === 'approved'
+      ? `${greeting}Your payment has been verified. Your JobRush account is now active — sign in and use the features included in your plan.\n\nThank you for choosing JobRush.\n`
+      : `${greeting}We were unable to verify your payment with the reference we have on file.\n\n${refLine}Please try again from the JobRush app or contact support with proof of payment if you believe this is a mistake.\n\n— JobRush\n`
+
+  try {
+    await transport.sendMail({ from, to: email, subject, text })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('notify-payment-decision mail error', e)
+    res.status(500).json({ error: e.message || 'Failed to send email' })
+  }
+})
+
+/**
+ * POST /api/admin/send-user-email
+ * Header: Authorization: Bearer ADMIN_API_SECRET
+ * Body: { toEmail, subject, text }
+ */
+app.post('/api/admin/send-user-email', async (req, res) => {
+  const expected = process.env.ADMIN_API_SECRET
+  const hdr = req.headers.authorization || ''
+  if (!expected || hdr !== `Bearer ${expected}`) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  const { toEmail, subject, text } = req.body || {}
+  const email = String(toEmail || '').trim()
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Invalid toEmail' })
+  }
+  const subj = String(subject || '').trim()
+  const body = String(text || '')
+  if (!subj || !body) {
+    return res.status(400).json({ error: 'subject and text are required' })
+  }
+
+  const transport = createMailTransport()
+  if (!transport) {
+    return res.status(503).json({
+      error: 'Email is not configured. Set SMTP_* and MAIL_FROM on the API server.',
+    })
+  }
+
+  const from = process.env.MAIL_FROM || process.env.SMTP_USER
+  const clipped = body.length > 12000 ? `${body.slice(0, 12000)}\n\n[Message truncated for email size limits.]\n` : body
+
+  try {
+    await transport.sendMail({ from, to: email, subject: subj, text: clipped })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('send-user-email error', e)
+    res.status(500).json({ error: e.message || 'Failed to send email' })
+  }
 })
 
 const PORT = process.env.PORT || 3001

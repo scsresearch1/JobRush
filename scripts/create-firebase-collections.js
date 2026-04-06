@@ -34,8 +34,21 @@ const DATABASE_URL = 'https://jobrush-f2eb4-default-rtdb.asia-southeast1.firebas
 
 const COLLECTION_STRUCTURE = {
   userdb: {
-    description: 'User collection - documents have UniqueID, EmailID, and Timestamp',
-    fields: ['UniqueID', 'EmailID', 'Timestamp'],
+    description:
+      'User collection — UniqueID, EmailID, Timestamp; optional accessStatus, lastSeenAt, payment fields (synced from client)',
+    fields: [
+      'UniqueID',
+      'EmailID',
+      'Timestamp',
+      'accessStatus',
+      'lastSeenAt',
+      'paymentReference',
+      'accessRequestedAt',
+      'couponCodePending',
+      'suspended',
+      'atsChecksUsed',
+      'mockInterviewsUsed',
+    ],
     seedDocuments: [], // Empty - node created with schema only
   },
   interviewReports: {
@@ -43,12 +56,17 @@ const COLLECTION_STRUCTURE = {
     fields: ['userId', 'report', 'recommendations', 'generatedAt'],
     seedDocuments: [], // Reports pushed by client via push()
   },
+  atsReports: {
+    description: 'ATS compatibility snapshots - userId, report (summary + scores), generatedAt',
+    fields: ['userId', 'report', 'generatedAt'],
+    seedDocuments: [],
+  },
   adminPortal: {
     description:
-      'JobRush admin portal (jadm) login — username/password. Lock down RTDB rules so only trusted clients can read/write this path.',
+      'JobRush admin portal (jadm): credentials (username/password) and optional paymentQr (qrImageUrl) for the client UPI modal. Lock down RTDB rules appropriately.',
     fields: ['username', 'password'],
     seedDocuments: [
-      { id: 'credentials', data: { username: 'jadm', password: 'JBRush@2026' } },
+      { id: 'credentials', data: { username: 'sd.niladri@gmail.com', password: 'JBRush@2026' } },
     ],
   },
 }

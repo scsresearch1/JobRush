@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { isFirebaseWebConfigReady } from '../config/firebase'
-import { getAdminCredentials, saveAdminCredentials } from '../services/adminDb'
+import { getAdminCredentials, saveAdminCredentials, saveAdminUsernameOnly } from '../services/adminDb'
 
 const SESSION_KEY = 'jadm_admin_session'
 const SESSION_EXPIRY_MS = 8 * 60 * 60 * 1000 // 8 hours
@@ -81,6 +81,28 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  const changeAdminUsername = useCallback(async (currentPassword, newUsername) => {
+    const cur = String(currentPassword || '')
+    const next = String(newUsername || '').trim()
+    if (!cur || !next) {
+      return { ok: false, error: 'Enter your current password and the new admin email or username.' }
+    }
+    try {
+      const creds = await getAdminCredentials()
+      if (!creds) {
+        return { ok: false, error: 'Admin credentials are missing in Firebase.' }
+      }
+      if (creds.password !== cur) {
+        return { ok: false, error: 'Current password is incorrect.' }
+      }
+      await saveAdminUsernameOnly(next)
+      return { ok: true }
+    } catch (e) {
+      console.error('[jadm] changeAdminUsername', e)
+      return { ok: false, error: messageForFirebaseError(e) }
+    }
+  }, [])
+
   const changePassword = useCallback(async (currentPassword, newPassword) => {
     const cur = String(currentPassword || '')
     const next = String(newPassword || '')
@@ -112,7 +134,9 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ ready, authenticated, login, logout, changePassword }}>
+    <AuthContext.Provider
+      value={{ ready, authenticated, login, logout, changePassword, changeAdminUsername }}
+    >
       {children}
     </AuthContext.Provider>
   )

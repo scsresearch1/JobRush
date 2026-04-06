@@ -18,6 +18,9 @@ import {
 import { speakQuestion, stopSpeaking, preloadVoices } from '../utils/questionTts.js'
 import { startVideoAnalysis } from '../utils/videoAnalyzer.js'
 import BehavioralReport from '../components/BehavioralReport.jsx'
+import { getUser } from '../services/database.js'
+import { USERDB_FIELDS } from '../config/databaseSchema.js'
+import { QUOTA_MOCK_MAX } from '../utils/quotas.js'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
@@ -33,6 +36,7 @@ const MockInterview = () => {
   const [resume, setResume] = useState(null)
   const [questions, setQuestions] = useState([])
   const [parseError, setParseError] = useState('')
+  const [mockQuotaExceeded, setMockQuotaExceeded] = useState(false)
 
   const [isRecording, setIsRecording] = useState(false)
   const [countdown, setCountdown] = useState(null) // 60, 59, ... 0 when recording
@@ -62,6 +66,27 @@ const MockInterview = () => {
       } catch {
         // ignore
       }
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    let uid
+    try {
+      uid = JSON.parse(localStorage.getItem('jobRush_user') || '{}').uniqueId
+    } catch {
+      uid = null
+    }
+    if (!uid || String(uid).startsWith('local_')) return undefined
+    getUser(uid)
+      .then((d) => {
+        if (cancelled) return
+        const used = Number(d?.[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0
+        if (used >= QUOTA_MOCK_MAX) setMockQuotaExceeded(true)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
     }
   }, [])
 
@@ -331,6 +356,26 @@ const MockInterview = () => {
   }, [currentQuestionIndex, isRecording])
 
   const currentQuestion = questions[currentQuestionIndex]
+
+  if (mockQuotaExceeded) {
+    return (
+      <div>
+        <Link
+          to="/dashboard"
+          className="inline-flex items-center text-gray-600 hover:text-primary-600 mb-6 transition font-medium"
+        >
+          <ArrowLeftIcon className="w-5 h-5 mr-2" />
+          Back to Dashboard
+        </Link>
+        <div className="bg-white rounded-2xl shadow-lg p-8 text-center max-w-lg mx-auto">
+          <p className="text-lg font-semibold text-gray-900 mb-2">Mock interview limit reached</p>
+          <p className="text-gray-600">
+            You have used all {QUOTA_MOCK_MAX} mock interview reports included in your plan.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div>

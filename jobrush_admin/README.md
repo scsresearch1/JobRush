@@ -2,13 +2,16 @@
 
 Standalone React + Vite app for managing **Firebase Realtime Database** data used by JobRush.ai.
 
+**Persistence:** Every data change from this portal (users, reports, payment QR, admin password/username) is written with the Firebase client SDK to Realtime Database and is durable server-side. The only browser-only state is the signed-in session flag in `sessionStorage` (8h), not your business data.
+
 ## Features
 
-- **Dashboard** — counts for `userdb` and `interviewReports`
-- **Users** — list, search, delete (`userdb`)
-- **Interview reports** — list, expand preview, delete (`interviewReports`)
+- **Dashboard** — live metrics: registered users, payments pending verification (`accessStatus: awaiting_activation`), interview report count, approximate online users (`lastSeenAt` heartbeat from the main app), and JobRush API health (Groq / TTS from `/api/health`)
+- **User management** — table with IST timestamps, status (active / payment pending / awaiting verification / suspended), ATS & mock interview quotas (5/5), suspend/restore, delete, and **Approve payment** (for users awaiting verification) with approve/reject + transactional email via the JobRush API
+- **Report management** — user-centric table: `atsReports` + `interviewReports`, view counts (up to 5 each), open detailed list, email latest reports via API, delete all for a user (resets usage counters on `userdb`)
+- **Payment management** — upload or set URL for the UPI QR stored at `adminPortal/paymentQr` (shown on the client payment modal). If unset, the client uses the bundled file `jobrush_client/public/payment-phonepe-qr.png`, or `VITE_PAYMENT_QR_URL` when set.
 - **Login** — username and password read from Firebase at `adminPortal/credentials` (seeded by the repo script). Session in `sessionStorage` (8h).
-- **Settings** — change admin password (writes back to `adminPortal/credentials`).
+- **Settings** — change password; change admin login email/username (both under `adminPortal/credentials`).
 
 ## Setup
 
@@ -27,7 +30,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-From the **repository root**, seed the database (creates `adminPortal/credentials` with default username `jadm` and password `JBRush@2026` if you use the bundled seed):
+From the **repository root**, seed the database (creates `adminPortal/credentials` with default login `sd.niladri@gmail.com` and password `JBRush@2026` if you use the bundled seed):
 
 ```bash
 npm run firebase:create-collections
@@ -46,6 +49,15 @@ npm run preview
 
 Deploy `dist/` to any static host (separate Netlify site, S3, etc.). Set the Firebase web config env vars in the host dashboard.
 
+## Payment verification emails
+
+**Approve payment** / **Reject** updates `userdb` in Firebase, then asks the JobRush API to send email.
+
+1. **API server** (`server/` on Render, etc.): set `ADMIN_API_SECRET` and SMTP variables — see `server/.env.example` (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, …).
+2. **Admin site build** (same Netlify build as JobRush): set `VITE_ADMIN_API_SECRET` to the **same** string as `ADMIN_API_SECRET`. Use `VITE_JOBRUSH_API_BASE` if the API URL is not `https://jobrush.onrender.com`.
+
+If SMTP or the secret is missing, the user record still updates; the UI will report that email delivery failed.
+
 ## Firebase rules
 
 The admin app uses the **client SDK**. RTDB rules must allow read on `adminPortal/credentials` for login and write for password changes — or the portal cannot work. **Plain passwords in RTDB are sensitive:** restrict rules (e.g. no public read/write), deploy the admin app only on a trusted network, or move to Firebase Auth later.
@@ -59,11 +71,17 @@ If login fails with a **permission** message, merge something like this into you
       "credentials": {
         ".read": true,
         ".write": true
+      },
+      "paymentQr": {
+        ".read": true,
+        ".write": true
       }
     }
   }
 }
 ```
+
+The **client app** reads `adminPortal/paymentQr` to show the payment QR; allow `.read` there (or use a Cloud Function / Storage if you prefer not to store images in RTDB). Tighten `.write` in production if you can (e.g. only server-side writes).
 
 You still need rules for `userdb`, `interviewReports`, etc.; the above only shows the admin slice.
 

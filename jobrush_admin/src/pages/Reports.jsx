@@ -1,138 +1,277 @@
-import React, { useEffect, useState } from 'react'
-import { ArrowPathIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline'
-import { listInterviewReports, deleteInterviewReport } from '../services/adminDb'
-import { INTERVIEW_REPORTS_FIELDS } from '../config/schema'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  ArrowPathIcon,
+  TrashIcon,
+  EnvelopeIcon,
+  DocumentMagnifyingGlassIcon,
+} from '@heroicons/react/24/outline'
+import {
+  listUsers,
+  listInterviewReports,
+  listAtsReports,
+  deleteAllReportsForUser,
+} from '../services/adminDb'
+import { USERDB_FIELDS, INTERVIEW_REPORTS_FIELDS, ATS_REPORT_FIELDS } from '../config/schema'
+import { sendAdminUserEmail } from '../services/adminUserEmail'
+import UserReportsModal from '../components/UserReportsModal'
+
+const SLOT_MAX = 5
+
+function buildUserReportRows(users, interviews, atsList) {
+  const map = new Map()
+
+  const ensure = (uid) => {
+    if (!map.has(uid)) {
+      map.set(uid, { userId: uid, email: '—', mock: [], ats: [] })
+    }
+    return map.get(uid)
+  }
+
+  for (const u of users) {
+    const row = ensure(u.id)
+    row.email = u[USERDB_FIELDS.EMAIL_ID] || '—'
+  }
+
+  for (const r of interviews) {
+    const uid = r[INTERVIEW_REPORTS_FIELDS.USER_ID] || 'anonymous'
+    ensure(uid).mock.push(r)
+  }
+  for (const r of atsList) {
+    const uid = r[ATS_REPORT_FIELDS.USER_ID] || 'anonymous'
+    ensure(uid).ats.push(r)
+  }
+
+  return Array.from(map.values()).sort((a, b) =>
+    String(a.email).localeCompare(String(b.email))
+  )
+}
 
 export default function Reports() {
-  const [rows, setRows] = useState([])
+  const [userRows, setUserRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [deleting, setDeleting] = useState(null)
-  const [expanded, setExpanded] = useState({})
+  const [query, setQuery] = useState('')
+  const [busyUserId, setBusyUserId] = useState(null)
+  const [modal, setModal] = useState({ open: false, row: null })
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     setLoading(true)
     try {
-      const data = await listInterviewReports()
-      setRows(data.sort((a, b) => String(b[INTERVIEW_REPORTS_FIELDS.GENERATED_AT] || '').localeCompare(String(a[INTERVIEW_REPORTS_FIELDS.GENERATED_AT] || ''))))
+      const [users, interviews, atsList] = await Promise.all([
+        listUsers(),
+        listInterviewReports(),
+        listAtsReports(),
+      ])
+      setUserRows(buildUserReportRows(users, interviews, atsList))
     } catch (e) {
-      setError(e?.message || 'Failed to load reports')
-      setRows([])
+      setError(e?.message || 'Failed to load data')
+      setUserRows([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
-  const toggle = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return userRows
+    return userRows.filter((r) => {
+      const id = String(r.userId).toLowerCase()
+      const em = String(r.email).toLowerCase()
+      return id.includes(q) || em.includes(q)
+    })
+  }, [userRows, query])
 
-  const handleDelete = async (id) => {
-    if (!window.confirm(`Delete report ${id}?`)) return
-    setDeleting(id)
+  const openView = (row) => setModal({ open: true, row })
+
+  const emailLatest = async (row) => {
+    const email = row.email
+    if (!email || email === '—') {
+      alert('No email address on file for this user.')
+      return
+    }
+    const mockSorted = [...row.mock].sort((a, b) =>
+      String(b[INTERVIEW_REPORTS_FIELDS.GENERATED_AT] || '').localeCompare(
+        String(a[INTERVIEW_REPORTS_FIELDS.GENERATED_AT] || '')
+      )
+    )
+    const atsSorted = [...row.ats].sort((a, b) =>
+      String(b[ATS_REPORT_FIELDS.GENERATED_AT] || '').localeCompare(String(a[ATS_REPORT_FIELDS.GENERATED_AT] || ''))
+    )
+    const latestMock = mockSorted[0]
+    const latestAts = atsSorted[0]
+    if (!latestMock && !latestAts) {
+      alert('There are no saved reports to send.')
+      return
+    }
+
+    let text = `JobRush — latest saved reports\n\n`
+    if (latestAts) {
+      text += `ATS compatibility (saved ${latestAts[ATS_REPORT_FIELDS.GENERATED_AT] || ''}):\n`
+      text += `${JSON.stringify(latestAts[ATS_REPORT_FIELDS.REPORT], null, 2)}\n\n`
+    }
+    if (latestMock) {
+      text += `Mock interview (saved ${latestMock[INTERVIEW_REPORTS_FIELDS.GENERATED_AT] || ''}):\n`
+      text += `${JSON.stringify(latestMock[INTERVIEW_REPORTS_FIELDS.REPORT], null, 2)}\n\n`
+    }
+    text += `— Sent from JobRush Admin\n`
+
+    setBusyUserId(row.userId)
     try {
-      await deleteInterviewReport(id)
-      setRows((prev) => prev.filter((r) => r.id !== id))
+      await sendAdminUserEmail({
+        toEmail: email,
+        subject: 'JobRush — your latest ATS and mock interview reports',
+        text,
+      })
+      alert('Email sent.')
     } catch (e) {
-      alert(e?.message || 'Delete failed')
+      alert(e?.message || 'Failed to send email')
     } finally {
-      setDeleting(null)
+      setBusyUserId(null)
     }
   }
 
-  const previewJson = (obj) => {
-    if (obj == null) return '—'
+  const deleteAll = async (row) => {
+    if (
+      !window.confirm(
+        `Delete all ATS and mock interview reports for this user? Usage counters will be reset to 0/${SLOT_MAX}. This cannot be undone.`
+      )
+    ) {
+      return
+    }
+    setBusyUserId(row.userId)
     try {
-      const s = JSON.stringify(obj, null, 0)
-      return s.length > 120 ? `${s.slice(0, 120)}…` : s
-    } catch {
-      return String(obj)
+      await deleteAllReportsForUser(row.userId)
+      await load()
+    } catch (e) {
+      alert(e?.message || 'Delete failed')
+    } finally {
+      setBusyUserId(null)
     }
   }
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+    <div className="max-w-[100vw]">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Interview reports</h1>
-          <p className="text-admin-400 text-sm mt-1">Firebase path: interviewReports</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Report management</h1>
+          <p className="text-admin-400 text-sm mt-1 leading-relaxed">
+            Per-user view of saved reports in{' '}
+            <code className="text-admin-500 text-xs">atsReports</code> and{' '}
+            <code className="text-admin-500 text-xs">interviewReports</code> (up to {SLOT_MAX} of each per plan).
+          </p>
         </div>
         <button
           type="button"
           onClick={load}
           disabled={loading}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-admin-800 text-admin-100 hover:bg-admin-700 disabled:opacity-50 text-sm font-medium"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-admin-800 text-admin-100 hover:bg-admin-700 disabled:opacity-50 text-sm font-medium shrink-0"
         >
           <ArrowPathIcon className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
       </div>
 
+      <div className="relative max-w-xl mb-4">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter by user ID or email…"
+          className="w-full px-4 py-2.5 rounded-xl bg-admin-900 border border-admin-700 text-white text-sm"
+        />
+      </div>
+
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
 
-      <div className="space-y-3">
-        {loading ? (
-          <p className="text-admin-500">Loading…</p>
-        ) : rows.length === 0 ? (
-          <p className="text-admin-500">No reports yet</p>
-        ) : (
-          rows.map((r) => {
-            const isOpen = expanded[r.id]
-            const userId = r[INTERVIEW_REPORTS_FIELDS.USER_ID] || '—'
-            const genAt = r[INTERVIEW_REPORTS_FIELDS.GENERATED_AT] || '—'
-            const recCount = Array.isArray(r[INTERVIEW_REPORTS_FIELDS.RECOMMENDATIONS])
-              ? r[INTERVIEW_REPORTS_FIELDS.RECOMMENDATIONS].length
-              : 0
-            return (
-              <div
-                key={r.id}
-                className="rounded-xl border border-admin-700 bg-admin-900/50 overflow-hidden"
-              >
-                <div className="flex flex-wrap items-center gap-3 p-4">
-                  <button
-                    type="button"
-                    onClick={() => toggle(r.id)}
-                    className="p-1 rounded text-admin-400 hover:text-white"
-                    aria-expanded={isOpen}
-                  >
-                    {isOpen ? <ChevronUpIcon className="w-5 h-5" /> : <ChevronDownIcon className="w-5 h-5" />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-mono text-xs text-admin-500 break-all">{r.id}</p>
-                    <p className="text-sm text-white mt-1">
-                      User: <span className="text-admin-300">{userId}</span>
-                      {' · '}
-                      <span className="text-admin-400">{genAt}</span>
-                      {' · '}
-                      <span className="text-admin-500">{recCount} recommendations</span>
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(r.id)}
-                    disabled={deleting === r.id}
-                    className="p-2 rounded-lg text-red-400 hover:bg-red-950/50 disabled:opacity-50"
-                    title="Delete"
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
-                </div>
-                {isOpen && (
-                  <div className="px-4 pb-4 border-t border-admin-800 pt-4">
-                    <p className="text-xs font-semibold text-admin-400 mb-2">Report (preview)</p>
-                    <pre className="text-xs text-admin-200 bg-admin-950 p-3 rounded-lg overflow-x-auto max-h-48 overflow-y-auto">
-                      {previewJson(r[INTERVIEW_REPORTS_FIELDS.REPORT])}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )
-          })
-        )}
+      <div className="rounded-xl border border-admin-700 overflow-hidden bg-admin-900/50">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left min-w-[640px]">
+            <thead>
+              <tr className="border-b border-admin-700 bg-admin-900">
+                <th className="py-3 px-3 font-medium text-admin-300">Unique ID</th>
+                <th className="py-3 px-3 font-medium text-admin-300">Email</th>
+                <th className="py-3 px-3 font-medium text-admin-300 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-admin-800">
+              {loading ? (
+                <tr>
+                  <td colSpan={3} className="py-10 text-center text-admin-500">
+                    Loading…
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="py-10 text-center text-admin-500">
+                    No rows match
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((row) => {
+                  const nAts = Math.min(SLOT_MAX, row.ats.length)
+                  const nMock = Math.min(SLOT_MAX, row.mock.length)
+                  const busy = busyUserId === row.userId
+                  return (
+                    <tr key={row.userId} className="hover:bg-admin-800/40 align-top">
+                      <td className="py-3 px-3 font-mono text-xs text-admin-100 max-w-[160px]">
+                        <span className="break-all line-clamp-2" title={row.userId}>
+                          {row.userId}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-white break-all max-w-[200px]">{row.email}</td>
+                      <td className="py-3 px-3">
+                        <div className="flex flex-col sm:flex-row sm:justify-end gap-2 items-stretch sm:items-center">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => openView(row)}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-admin-800 text-admin-100 text-xs font-medium hover:bg-admin-700 disabled:opacity-50 whitespace-nowrap"
+                          >
+                            <DocumentMagnifyingGlassIcon className="w-4 h-4 shrink-0" />
+                            View reports · ATS {nAts}/{SLOT_MAX} · Mock {nMock}/{SLOT_MAX}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy || row.email === '—'}
+                            onClick={() => emailLatest(row)}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-sky-900/40 text-sky-200 text-xs font-medium ring-1 ring-sky-800/50 hover:bg-sky-900/60 disabled:opacity-50 whitespace-nowrap"
+                          >
+                            <EnvelopeIcon className="w-4 h-4 shrink-0" />
+                            Email latest reports
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => deleteAll(row)}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-red-400 text-xs font-medium hover:bg-red-950/40 disabled:opacity-50 whitespace-nowrap"
+                          >
+                            <TrashIcon className="w-4 h-4 shrink-0" />
+                            Delete all reports
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      <UserReportsModal
+        open={modal.open}
+        onClose={() => setModal({ open: false, row: null })}
+        userId={modal.row?.userId}
+        email={modal.row?.email}
+        mockReports={modal.row?.mock}
+        atsReports={modal.row?.ats}
+      />
     </div>
   )
 }

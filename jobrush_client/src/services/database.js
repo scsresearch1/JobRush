@@ -10,8 +10,9 @@
 
 import { ref, set, get, push, update, remove } from 'firebase/database'
 import { database } from '../config/firebase'
-import { COLLECTIONS, USERDB_FIELDS, INTERVIEW_REPORTS_FIELDS } from '../config/databaseSchema'
+import { COLLECTIONS, USERDB_FIELDS, INTERVIEW_REPORTS_FIELDS, ATS_REPORT_FIELDS } from '../config/databaseSchema'
 import { getISTTimestamp } from '../utils/timestamp.js'
+import { QUOTA_ATS_MAX, QUOTA_MOCK_MAX } from '../utils/quotas.js'
 
 // =============================================================================
 // REFERENCE HELPERS
@@ -33,14 +34,60 @@ export const userRef = (uniqueId) => ref(database, `${COLLECTIONS.USERDB}/${uniq
  * @param {string} emailId - User's email
  * @returns {Promise<void>}
  */
-export async function saveUser(uniqueId, emailId) {
+function isFirebaseBackedUserId(uniqueId) {
+  return Boolean(uniqueId) && !String(uniqueId).startsWith('local_')
+}
+
+/**
+ * @param {Record<string, unknown>} [extra] — optional fields merged into the user node (e.g. accessStatus, lastSeenAt)
+ */
+export async function saveUser(uniqueId, emailId, extra = {}) {
   const userRefPath = userRef(uniqueId)
   const timestamp = getISTTimestamp()
   await set(userRefPath, {
     [USERDB_FIELDS.UNIQUE_ID]: uniqueId,
     [USERDB_FIELDS.EMAIL_ID]: emailId,
     [USERDB_FIELDS.TIMESTAMP]: timestamp,
+    ...extra,
   })
+}
+
+/**
+ * Merges access / presence fields into userdb for admin dashboards (no-op for local-only IDs).
+ */
+export async function syncUserFieldsToFirebase(uniqueId, partial) {
+  if (!isFirebaseBackedUserId(uniqueId)) return
+  const patch = {}
+  if (partial.accessStatus !== undefined) patch[USERDB_FIELDS.ACCESS_STATUS] = partial.accessStatus
+  if (partial.paymentReference !== undefined) patch[USERDB_FIELDS.PAYMENT_REFERENCE] = partial.paymentReference
+  if (partial.accessRequestedAt !== undefined) patch[USERDB_FIELDS.ACCESS_REQUESTED_AT] = partial.accessRequestedAt
+  if (partial.couponCodePending !== undefined) patch[USERDB_FIELDS.COUPON_CODE_PENDING] = partial.couponCodePending
+  if (partial.lastSeenAt !== undefined) patch[USERDB_FIELDS.LAST_SEEN_AT] = partial.lastSeenAt
+  if (Object.keys(patch).length === 0) return
+  await update(userRef(uniqueId), patch)
+}
+
+export async function touchUserLastSeen(uniqueId) {
+  if (!isFirebaseBackedUserId(uniqueId)) return
+  await update(userRef(uniqueId), { [USERDB_FIELDS.LAST_SEEN_AT]: new Date().toISOString() })
+}
+
+export async function incrementAtsCheckUsage(uniqueId) {
+  if (!isFirebaseBackedUserId(uniqueId)) return
+  const snapshot = await get(userRef(uniqueId))
+  const prev = snapshot.exists() ? snapshot.val() : {}
+  const cur = Number(prev[USERDB_FIELDS.ATS_CHECKS_USED]) || 0
+  const next = Math.min(QUOTA_ATS_MAX, cur + 1)
+  await update(userRef(uniqueId), { [USERDB_FIELDS.ATS_CHECKS_USED]: next })
+}
+
+export async function incrementMockInterviewUsage(uniqueId) {
+  if (!isFirebaseBackedUserId(uniqueId)) return
+  const snapshot = await get(userRef(uniqueId))
+  const prev = snapshot.exists() ? snapshot.val() : {}
+  const cur = Number(prev[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0
+  const next = Math.min(QUOTA_MOCK_MAX, cur + 1)
+  await update(userRef(uniqueId), { [USERDB_FIELDS.MOCK_INTERVIEWS_USED]: next })
 }
 
 /**
@@ -94,8 +141,30 @@ export async function deleteUser(uniqueId) {
 // INTERVIEW REPORTS
 // =============================================================================
 
+/** Serializable ATS payload for Firebase (avoids huge evidence / normalized blobs). */
+export function buildStorableAtsReport(evaluation) {
+  if (!evaluation) return null
+  const generatedAt = new Date().toISOString()
+  return {
+    version: 1,
+    kind: 'ats_compatibility',
+    generatedAt,
+    summary: evaluation.summary,
+    scores: {
+      all: (evaluation.scores?.all || []).map((s) => ({
+        entity: s.entity,
+        type: s.type,
+        score: s.score,
+        raw_score: s.raw_score,
+      })),
+    },
+  }
+}
+
 /** Get reference to interviewReports collection */
 export const interviewReportsRef = () => ref(database, COLLECTIONS.INTERVIEW_REPORTS)
+
+export const atsReportsRef = () => ref(database, COLLECTIONS.ATS_REPORTS)
 
 /**
  * Save a behavioral report to Firebase
@@ -112,6 +181,23 @@ export async function saveInterviewReport(userId, report, recommendations = []) 
     [INTERVIEW_REPORTS_FIELDS.REPORT]: report,
     [INTERVIEW_REPORTS_FIELDS.RECOMMENDATIONS]: recommendations,
     [INTERVIEW_REPORTS_FIELDS.GENERATED_AT]: report?.generatedAt || getISTTimestamp(),
+  })
+  return newRef.key
+}
+
+/**
+ * Persist one ATS analysis run (paired with incrementing atsChecksUsed on the client).
+ * @param {string} userId
+ * @param {object} reportPayload — from buildStorableAtsReport()
+ */
+export async function saveAtsReport(userId, reportPayload) {
+  const root = atsReportsRef()
+  const newRef = push(root)
+  const generatedAt = reportPayload?.generatedAt || getISTTimestamp()
+  await set(newRef, {
+    [ATS_REPORT_FIELDS.USER_ID]: userId || 'anonymous',
+    [ATS_REPORT_FIELDS.REPORT]: reportPayload,
+    [ATS_REPORT_FIELDS.GENERATED_AT]: generatedAt,
   })
   return newRef.key
 }

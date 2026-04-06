@@ -6,7 +6,10 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Users from './pages/Users'
 import Reports from './pages/Reports'
-import Settings from './pages/Settings'
+import SettingsLayout from './pages/SettingsLayout'
+import SettingsPassword from './pages/SettingsPassword'
+import SettingsEmail from './pages/SettingsEmail'
+import PaymentQr from './pages/PaymentQr'
 
 function ProtectedRoute({ children }) {
   const { ready, authenticated } = useAuth()
@@ -38,7 +41,12 @@ function AppRoutes() {
         <Route index element={<Dashboard />} />
         <Route path="users" element={<Users />} />
         <Route path="reports" element={<Reports />} />
-        <Route path="settings" element={<Settings />} />
+        <Route path="payments/qr" element={<PaymentQr />} />
+        <Route path="settings" element={<SettingsLayout />}>
+          <Route index element={<Navigate to="password" replace />} />
+          <Route path="password" element={<SettingsPassword />} />
+          <Route path="email" element={<SettingsEmail />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

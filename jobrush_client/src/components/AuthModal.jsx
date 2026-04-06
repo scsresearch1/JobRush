@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { XMarkIcon, UserIcon, LockClosedIcon, EnvelopeIcon } from '@heroicons/react/24/outline'
-import { saveUser, getUserByEmail } from '../services/database'
+import { saveUser, getUserByEmail, touchUserLastSeen } from '../services/database'
+import { USERDB_FIELDS } from '../config/databaseSchema'
 import { getISTTimestamp } from '../utils/timestamp.js'
 
 const AuthModal = ({ isOpen, onClose, onSuccess }) => {
@@ -81,7 +82,9 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
       } else {
         // Register: generate UniqueID and save to Firebase userdb
         uniqueId = crypto.randomUUID?.() || `user_${Date.now()}_${Math.random().toString(36).slice(2)}`
-        await saveUser(uniqueId, formData.email)
+        await saveUser(uniqueId, formData.email, {
+          [USERDB_FIELDS.LAST_SEEN_AT]: new Date().toISOString(),
+        })
       }
 
       const userData = {
@@ -89,10 +92,11 @@ const AuthModal = ({ isOpen, onClose, onSuccess }) => {
         name: isLogin ? 'User' : formData.name,
         email: formData.email,
         isAuthenticated: true,
-        loginTime: getISTTimestamp()
+        loginTime: getISTTimestamp(),
       }
 
       localStorage.setItem('jobRush_user', JSON.stringify(userData))
+      touchUserLastSeen(uniqueId).catch(() => {})
       onSuccess(userData)
       onClose()
     } catch (err) {

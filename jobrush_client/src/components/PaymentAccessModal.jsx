@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react'
+import { fetchPaymentQrImageUrlFromFirebase } from '../services/paymentQrFirebase.js'
+import { resolvePaymentQrFallbackSrc } from '../config/paymentQr.js'
+import { syncUserFieldsToFirebase } from '../services/database.js'
 import {
   XMarkIcon,
   QrCodeIcon,
@@ -12,13 +15,6 @@ const PLAN_AMOUNT_INR = 500
 const RESUME_CORRECTIONS = 5
 const MOCK_INTERVIEWS = 5
 
-function buildQrImageSrc() {
-  const configured = import.meta.env.VITE_PAYMENT_QR_URL
-  if (configured) return configured
-  // Bundled merchant QR (jobrush_client/public/payment-phonepe-qr.png)
-  return '/payment-phonepe-qr.png'
-}
-
 /**
  * Post-email onboarding: plan summary, coupon field (logic TBD), QR payment,
  * payment reference capture, and access request confirmation.
@@ -30,6 +26,23 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer' }) =
   const [upiReference, setUpiReference] = useState('')
   const [refError, setRefError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [qrSrc, setQrSrc] = useState(() => resolvePaymentQrFallbackSrc())
+
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const fromDb = await fetchPaymentQrImageUrlFromFirebase()
+        if (!cancelled) setQrSrc(fromDb || resolvePaymentQrFallbackSrc())
+      } catch {
+        if (!cancelled) setQrSrc(resolvePaymentQrFallbackSrc())
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen])
 
   useEffect(() => {
     if (!isOpen) return
@@ -49,7 +62,10 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer' }) =
     try {
       const raw = localStorage.getItem('jobRush_user')
       const prev = raw ? JSON.parse(raw) : {}
-      localStorage.setItem('jobRush_user', JSON.stringify({ ...prev, ...patch }))
+      const next = { ...prev, ...patch }
+      localStorage.setItem('jobRush_user', JSON.stringify(next))
+      const uid = next.uniqueId
+      syncUserFieldsToFirebase(uid, patch).catch(() => {})
     } catch {
       /* ignore */
     }
@@ -118,8 +134,6 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer' }) =
     setRefError('')
     setStep('offer')
   }
-
-  const qrSrc = buildQrImageSrc()
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

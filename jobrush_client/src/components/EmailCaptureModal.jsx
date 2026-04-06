@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { XMarkIcon, EnvelopeIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import { saveUser } from '../services/database'
+import { USERDB_FIELDS } from '../config/databaseSchema'
 import { getISTTimestamp } from '../utils/timestamp.js'
 
 const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
@@ -26,7 +27,10 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
     try {
       const uniqueId = crypto.randomUUID?.() || `user_${Date.now()}_${Math.random().toString(36).slice(2)}`
       try {
-        await saveUser(uniqueId, email.trim())
+        await saveUser(uniqueId, email.trim(), {
+          [USERDB_FIELDS.ACCESS_STATUS]: 'pending_payment',
+          [USERDB_FIELDS.LAST_SEEN_AT]: new Date().toISOString(),
+        })
       } catch (firebaseErr) {
         console.error('Firebase save failed:', firebaseErr)
         setError('Could not save to Firebase. Add your web config to .env.local (see .env.example)')

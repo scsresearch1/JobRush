@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { KeyIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 
-export default function Settings() {
+export default function SettingsPassword() {
   const { changePassword } = useAuth()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -32,8 +32,10 @@ export default function Settings() {
 
   return (
     <div className="max-w-lg">
-      <h1 className="text-2xl font-bold text-white mb-2">Account</h1>
-      <p className="text-admin-300 text-sm mb-8">Change the admin password stored in Realtime Database.</p>
+      <h1 className="text-2xl font-bold text-white mb-2">Change password</h1>
+      <p className="text-admin-300 text-sm mb-8">
+        Saves to <code className="text-admin-400 text-xs">adminPortal/credentials</code> in Firebase Realtime Database — permanent until changed again.
+      </p>
 
       <div className="bg-admin-900/80 border border-admin-800 rounded-2xl p-6">
         <div className="flex items-center gap-3 mb-6">
@@ -41,7 +43,7 @@ export default function Settings() {
             <KeyIcon className="w-6 h-6 text-admin-300" />
           </div>
           <div>
-            <h2 className="font-semibold text-white">Reset password</h2>
+            <h2 className="font-semibold text-white">Change password</h2>
             <p className="text-xs text-admin-400">Requires your current password</p>
           </div>
         </div>

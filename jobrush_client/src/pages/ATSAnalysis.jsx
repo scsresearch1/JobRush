@@ -37,6 +37,9 @@ import {
   LightBulbIcon,
 } from '@heroicons/react/24/outline'
 import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
+import { getUser, incrementAtsCheckUsage, saveAtsReport, buildStorableAtsReport } from '../services/database.js'
+import { USERDB_FIELDS } from '../config/databaseSchema.js'
+import { QUOTA_ATS_MAX } from '../utils/quotas.js'
 
 const massHiringCompanyRows = MASS_HIRING_PROFILES.map((p) => ({
   company: p.entity,
@@ -72,17 +75,74 @@ const ATSAnalysis = () => {
   const [aiExplanation, setAiExplanation] = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState(null)
+  const [quotaExceeded, setQuotaExceeded] = useState(false)
 
   useEffect(() => {
-    const stored = localStorage.getItem('jobRush_parsed_resume')
-    const parsed = stored ? JSON.parse(stored) : null
-    if (!parsed) {
-      setLoading(false)
-      return
+    let cancelled = false
+    ;(async () => {
+      const stored = localStorage.getItem('jobRush_parsed_resume')
+      const parsed = stored ? JSON.parse(stored) : null
+      let uid
+      try {
+        uid = JSON.parse(localStorage.getItem('jobRush_user') || '{}').uniqueId
+      } catch {
+        uid = null
+      }
+      if (uid && !String(uid).startsWith('local_')) {
+        try {
+          const data = await getUser(uid)
+          const used = Number(data?.[USERDB_FIELDS.ATS_CHECKS_USED]) || 0
+          if (used >= QUOTA_ATS_MAX) {
+            if (!cancelled) {
+              setQuotaExceeded(true)
+              setLoading(false)
+            }
+            return
+          }
+        } catch {
+          /* offline rules: still allow evaluation */
+        }
+      }
+      if (!parsed) {
+        if (!cancelled) setLoading(false)
+        return
+      }
+      const result = evaluateResume(parsed)
+      if (!cancelled) {
+        setEvaluation(result)
+        if (uid && !String(uid).startsWith('local_')) {
+          try {
+            const payload = buildStorableAtsReport(result)
+            if (payload) {
+              const dedupeKey = '_jrush_ats_persist'
+              let skip = false
+              try {
+                const prev = JSON.parse(sessionStorage.getItem(dedupeKey) || 'null')
+                const now = Date.now()
+                if (prev && prev.uid === uid && now - prev.t < 4000) skip = true
+              } catch {
+                /* ignore */
+              }
+              if (!skip) {
+                await saveAtsReport(uid, payload)
+                await incrementAtsCheckUsage(uid)
+                try {
+                  sessionStorage.setItem(dedupeKey, JSON.stringify({ uid, t: Date.now() }))
+                } catch {
+                  /* ignore */
+                }
+              }
+            }
+          } catch {
+            /* offline or rules — evaluation still shown */
+          }
+        }
+      }
+      if (!cancelled) setLoading(false)
+    })()
+    return () => {
+      cancelled = true
     }
-    const result = evaluateResume(parsed)
-    setEvaluation(result)
-    setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -179,6 +239,25 @@ const ATSAnalysis = () => {
         <div className="text-center">
           <div className="animate-spin w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-gray-600">Running ATS evaluation...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (quotaExceeded) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
+          <p className="text-gray-900 font-semibold mb-2">ATS check limit reached</p>
+          <p className="text-gray-600 mb-6">
+            You have used all {QUOTA_ATS_MAX} ATS compatibility runs included in your plan.
+          </p>
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center gap-2 bg-primary-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-700 transition"
+          >
+            Back to dashboard
+          </Link>
         </div>
       </div>
     )

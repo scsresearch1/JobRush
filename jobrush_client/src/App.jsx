@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { HelpCenterProvider, useHelpCenter } from './context/HelpCenterContext'
 import HelpCenterChatbot from './components/HelpCenterChatbot'
@@ -17,8 +17,10 @@ import PrivacyPage from './pages/PrivacyPage'
 import TransitionPage from './components/TransitionPage'
 import EmailCaptureModal from './components/EmailCaptureModal'
 import PaymentAccessModal from './components/PaymentAccessModal'
+import PresenceHeartbeat from './components/PresenceHeartbeat'
 import LoadTestPage from '@jobrush/testing-engine/LoadTestPage.jsx'
 import { hasAppAccess } from './utils/access.js'
+import { getUser } from './services/database.js'
 
 function ProtectedRoute({ children }) {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
@@ -30,6 +32,36 @@ function ProtectedRoute({ children }) {
 
 function App() {
   const navigate = useNavigate()
+
+  useEffect(() => {
+    function mergeLocalUserFromFirebase() {
+      const raw = localStorage.getItem('jobRush_user')
+      if (!raw) return
+      let u
+      try {
+        u = JSON.parse(raw)
+      } catch {
+        return
+      }
+      const uid = u?.uniqueId
+      if (!uid || String(uid).startsWith('local_')) return
+      getUser(uid)
+        .then((data) => {
+          if (!data) return
+          const merged = {
+            ...u,
+            accessStatus: data.accessStatus ?? u.accessStatus,
+            suspended: data.suspended === true ? true : data.suspended === false ? false : u.suspended,
+          }
+          localStorage.setItem('jobRush_user', JSON.stringify(merged))
+        })
+        .catch(() => {})
+    }
+    mergeLocalUserFromFirebase()
+    window.addEventListener('focus', mergeLocalUserFromFirebase)
+    return () => window.removeEventListener('focus', mergeLocalUserFromFirebase)
+  }, [])
+
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showTransition, setShowTransition] = useState(false)
   const [paymentModal, setPaymentModal] = useState({
@@ -103,6 +135,7 @@ function AppContent({
 
   return (
     <>
+      <PresenceHeartbeat />
       <PaymentAccessModal
         isOpen={paymentModal.open}
         onClose={closePaymentModal}

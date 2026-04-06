@@ -88,8 +88,9 @@ export default function Login() {
           </button>
         </form>
         <p className="text-center text-xs text-admin-500 mt-6">
-          Defaults are seeded at <code className="text-admin-400">adminPortal/credentials</code> when you run{' '}
+          Initial login is seeded at <code className="text-admin-400">adminPortal/credentials</code> when you run{' '}
           <code className="text-admin-400">npm run firebase:create-collections</code>
+          {' '}(default user <code className="text-admin-400">sd.niladri@gmail.com</code>).
         </p>
       </div>
     </div>

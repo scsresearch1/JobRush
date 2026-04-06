@@ -3,10 +3,10 @@
  * Scientific-style presentation of time-series behavioral metrics.
  */
 
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useRef } from 'react'
 import { buildBehavioralReport, generateLocalInterviewTips, detectEmotionSpikesFromCurves } from '../utils/behavioralTimeSeries.js'
 import { getInterviewRecommendations } from '../services/groqService.js'
-import { saveInterviewReport } from '../services/database.js'
+import { saveInterviewReport, incrementMockInterviewUsage } from '../services/database.js'
 
 const CHART_HEIGHT = 80
 const CHART_PADDING = { top: 8, right: 8, bottom: 20, left: 36 }
@@ -260,6 +260,7 @@ export default function BehavioralReport({ responses }) {
   const [recommendations, setRecommendations] = useState([])
   const [recsLoading, setRecsLoading] = useState(false)
   const [recsError, setRecsError] = useState(null)
+  const mockQuotaIncremented = useRef(false)
 
   const fetchRecommendations = () => {
     if (!report.questionTimelines?.length) return
@@ -271,6 +272,15 @@ export default function BehavioralReport({ responses }) {
         try {
           const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
           await saveInterviewReport(user?.uniqueId || 'anonymous', report, recs || [])
+          const uid = user?.uniqueId
+          if (
+            !mockQuotaIncremented.current &&
+            uid &&
+            !String(uid).startsWith('local_')
+          ) {
+            mockQuotaIncremented.current = true
+            incrementMockInterviewUsage(uid).catch(() => {})
+          }
         } catch (e) {
           console.warn('Could not save report to Firebase:', e)
         }
