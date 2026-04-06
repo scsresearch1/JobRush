@@ -210,7 +210,8 @@ Suggestion (${recommendation.section}): ${recommendation.suggestion}
 
 Return the modified resume as valid JSON. Apply the suggestion. Preserve name, email, phone, and all other entries. Output JSON only.`
 
-    const raw = await callGroq(systemPrompt, userPrompt)
+    // Full resume JSON in / out needs a large completion budget (default 1024 truncates and breaks JSON).
+    const raw = await callGroq(systemPrompt, userPrompt, 8192)
     let modified = resume
     try {
       const jsonMatch = raw.match(/\{[\s\S]*\}/)

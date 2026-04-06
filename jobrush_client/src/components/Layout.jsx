@@ -3,11 +3,13 @@ import { Link, useLocation } from 'react-router-dom'
 import { BriefcaseIcon, HomeIcon, UserIcon, VideoCameraIcon, Bars3Icon, XMarkIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
 import { pingHealth } from '../services/groqService.js'
 import { useHelpCenter } from '../context/HelpCenterContext'
+import { hasAppAccess } from '../utils/access.js'
 
 const Layout = ({ children }) => {
   const location = useLocation()
   const { openChatbot } = useHelpCenter()
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
+  const showSessionNav = hasAppAccess(user)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -36,7 +38,7 @@ const Layout = ({ children }) => {
               <span className="text-xl sm:text-2xl font-bold gradient-text">JobRush.ai</span>
             </Link>
             <div className="hidden md:flex items-center space-x-6">
-              {user?.isAuthenticated && (
+              {showSessionNav && (
                 <>
                   {navLinks.map(({ to, label, icon: Icon }) => (
                     <Link
@@ -70,7 +72,7 @@ const Layout = ({ children }) => {
                 </>
               )}
             </div>
-            {user?.isAuthenticated && (
+            {showSessionNav && (
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen((o) => !o)}
@@ -81,7 +83,7 @@ const Layout = ({ children }) => {
               </button>
             )}
           </div>
-          {user?.isAuthenticated && mobileMenuOpen && (
+          {showSessionNav && mobileMenuOpen && (
             <div className="md:hidden py-4 border-t border-gray-200 flex flex-col gap-1">
               {navLinks.map(({ to, label, icon: Icon }) => (
                 <Link

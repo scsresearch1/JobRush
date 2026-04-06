@@ -36,7 +36,8 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
       const userData = {
         uniqueId,
         email: email.trim(),
-        isAuthenticated: true,
+        isAuthenticated: false,
+        accessStatus: 'pending_payment',
         loginTime: getISTTimestamp(),
       }
       localStorage.setItem('jobRush_user', JSON.stringify(userData))

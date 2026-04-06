@@ -29,7 +29,9 @@ const ResumeImprovements = () => {
   const [recommendations, setRecommendations] = useState(FALLBACK_RECOMMENDATIONS)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [applying, setApplying] = useState(null) // index or 'all'
+  const [applying, setApplying] = useState(null) // index | 'all' | null
+  /** When Apply All runs, show "2 / 4" so users know it is sequential LLM calls (can take minutes on cold API). */
+  const [applyAllProgress, setApplyAllProgress] = useState(null) // { done, total } | null
   const [applyError, setApplyError] = useState(null)
 
   const fetchRecommendations = React.useCallback(async () => {
@@ -66,10 +68,11 @@ const ResumeImprovements = () => {
   }
 
   const handleApply = async (index) => {
-    if (!resume || applied[index]) return
+    if (!resume || applied[index] || applying != null) return
     setApplying(index)
     setApplyError(null)
     try {
+      await pingHealth(3, 4000)
       const { resume: modified } = await applyCorrection(resume, recommendations[index])
       saveResume(modified)
       setApplied((prev) => ({ ...prev, [index]: true }))
@@ -81,13 +84,18 @@ const ResumeImprovements = () => {
   }
 
   const handleApplyAll = async () => {
-    if (!resume) return
+    if (!resume || applying != null) return
+    const toApply = recommendations.map((_, i) => i).filter((i) => !applied[i])
+    if (toApply.length === 0) return
     setApplying('all')
+    setApplyAllProgress({ done: 0, total: toApply.length })
     setApplyError(null)
     let current = resume
-    const toApply = recommendations.map((_, i) => i).filter((i) => !applied[i])
     try {
-      for (const index of toApply) {
+      await pingHealth(3, 4000)
+      for (let step = 0; step < toApply.length; step++) {
+        const index = toApply[step]
+        setApplyAllProgress({ done: step, total: toApply.length })
         const { resume: modified } = await applyCorrection(current, recommendations[index])
         current = modified
         setApplied((prev) => ({ ...prev, [index]: true }))
@@ -97,6 +105,7 @@ const ResumeImprovements = () => {
       setApplyError(err.message)
     } finally {
       setApplying(null)
+      setApplyAllProgress(null)
     }
   }
 
@@ -177,16 +186,27 @@ const ResumeImprovements = () => {
           <p className="text-red-600 text-sm mb-4">Could not apply correction: {applyError}</p>
         )}
 
-        <div className="flex justify-end mb-6">
+        <p className="text-xs text-gray-500 mb-4 max-w-xl">
+          Each Apply calls the AI with your full resume. &quot;Apply All&quot; runs one request per suggestion in order and can take several minutes if the API was idle (cold start).
+        </p>
+
+        <div className="flex flex-col items-end gap-1 mb-6">
           <button
             onClick={handleApplyAll}
-            disabled={!resume || applying === 'all' || Object.keys(applied).length === recommendations.length}
+            disabled={
+              !resume ||
+              applying != null ||
+              Object.keys(applied).length === recommendations.length
+            }
             className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {applying === 'all' ? (
               <>
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Applying...
+                Applying
+                {applyAllProgress
+                  ? ` (${applyAllProgress.done + 1}/${applyAllProgress.total})`
+                  : '...'}
               </>
             ) : (
               <>
@@ -195,6 +215,11 @@ const ResumeImprovements = () => {
               </>
             )}
           </button>
+          {applying === 'all' && applyAllProgress && (
+            <span className="text-xs text-gray-500">
+              Step {applyAllProgress.done + 1} of {applyAllProgress.total} — please wait
+            </span>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -243,7 +268,7 @@ const ResumeImprovements = () => {
                 </div>
                 <button
                   onClick={() => handleApply(index)}
-                  disabled={applied[index] || !!applying || !resume}
+                  disabled={applied[index] || applying != null || !resume}
                   className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium shrink-0 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto ${
                     applied[index]
                       ? 'bg-green-100 text-green-700 cursor-default'

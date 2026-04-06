@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { generateResumePDF } from '../utils/pdfGenerator'
 import AuthModal from './AuthModal'
+import { hasAppAccess } from '../utils/access.js'
 
 const SparklesIconSVG = () => (
   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -36,7 +37,7 @@ const ResumeBuilder = ({ onBack }) => {
     if (userData) {
       try {
         const parsedUser = JSON.parse(userData)
-        if (parsedUser.isAuthenticated) {
+        if (hasAppAccess(parsedUser)) {
           setIsAuthenticated(true)
           setUser(parsedUser)
         }

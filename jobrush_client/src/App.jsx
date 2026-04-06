@@ -16,11 +16,13 @@ import CareersComingSoonPage from './pages/CareersComingSoonPage'
 import PrivacyPage from './pages/PrivacyPage'
 import TransitionPage from './components/TransitionPage'
 import EmailCaptureModal from './components/EmailCaptureModal'
+import PaymentAccessModal from './components/PaymentAccessModal'
 import LoadTestPage from '@jobrush/testing-engine/LoadTestPage.jsx'
+import { hasAppAccess } from './utils/access.js'
 
 function ProtectedRoute({ children }) {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
-  if (!user?.isAuthenticated) {
+  if (!hasAppAccess(user)) {
     return <Navigate to="/" replace />
   }
   return children
@@ -30,19 +32,40 @@ function App() {
   const navigate = useNavigate()
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showTransition, setShowTransition] = useState(false)
+  const [paymentModal, setPaymentModal] = useState({
+    open: false,
+    email: '',
+    initialStep: 'offer',
+  })
+
+  const openPaymentModal = (email, initialStep = 'offer') => {
+    setPaymentModal({ open: true, email: email || '', initialStep })
+  }
+
+  const closePaymentModal = () => {
+    setPaymentModal((prev) => ({ ...prev, open: false }))
+  }
 
   const handleStartJourney = () => {
     const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
-    if (user?.isAuthenticated) {
+    if (hasAppAccess(user)) {
       setShowTransition(true)
-    } else {
-      setShowEmailModal(true)
+      return
     }
+    if (user.accessStatus === 'awaiting_activation' && user.email) {
+      openPaymentModal(user.email, 'confirmation')
+      return
+    }
+    if (user.accessStatus === 'pending_payment' && user.email) {
+      openPaymentModal(user.email, 'offer')
+      return
+    }
+    setShowEmailModal(true)
   }
 
-  const handleEmailSuccess = () => {
+  const handleEmailSuccess = (userData) => {
     setShowEmailModal(false)
-    setShowTransition(true)
+    openPaymentModal(userData?.email, 'offer')
   }
 
   const handleTransitionComplete = () => {
@@ -61,16 +84,31 @@ function App() {
         setShowEmailModal={setShowEmailModal}
         handleEmailSuccess={handleEmailSuccess}
         handleStartJourney={handleStartJourney}
+        paymentModal={paymentModal}
+        closePaymentModal={closePaymentModal}
       />
     </HelpCenterProvider>
   )
 }
 
-function AppContent({ showEmailModal, setShowEmailModal, handleEmailSuccess, handleStartJourney }) {
+function AppContent({
+  showEmailModal,
+  setShowEmailModal,
+  handleEmailSuccess,
+  handleStartJourney,
+  paymentModal,
+  closePaymentModal,
+}) {
   const { isOpen, openChatbot, closeChatbot } = useHelpCenter()
 
   return (
     <>
+      <PaymentAccessModal
+        isOpen={paymentModal.open}
+        onClose={closePaymentModal}
+        email={paymentModal.email}
+        initialStep={paymentModal.initialStep}
+      />
       <EmailCaptureModal
         isOpen={showEmailModal}
         onClose={() => setShowEmailModal(false)}

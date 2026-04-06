@@ -15,6 +15,7 @@ import DemoModal from './DemoModal'
 import AnimatedCounter from './AnimatedCounter'
 import { useHelpCenter } from '../context/HelpCenterContext'
 import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
+import { hasAppAccess } from '../utils/access.js'
 
 const SparklesIconSVG = () => (
   <svg className="w-7 h-7 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -26,7 +27,9 @@ const LandingPage = ({ onStartJourney }) => {
   const { openChatbot } = useHelpCenter()
   const [isDemoOpen, setIsDemoOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const isLoggedIn = typeof window !== 'undefined' && JSON.parse(localStorage.getItem('jobRush_user') || '{}')?.isAuthenticated
+  const isLoggedIn =
+    typeof window !== 'undefined' &&
+    hasAppAccess(JSON.parse(localStorage.getItem('jobRush_user') || '{}'))
   const [currentTagline, setCurrentTagline] = useState(0)
   const [isFading, setIsFading] = useState(false)
 
