@@ -12,7 +12,7 @@ import nodemailer from 'nodemailer'
 
 /** Same RTDB as client/admin (jobrush_client/src/config/firebaseJobbrushDefaults.js). Override with FIREBASE_DATABASE_URL if needed. */
 const DEFAULT_FIREBASE_RTDB_URL =
-  'https://jobbrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
+  'https://jobrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
 
 const app = express()
 
@@ -566,7 +566,7 @@ async function fetchEmailOutboundFromRtdb() {
 }
 
 /**
- * Env SMTP overrides Firebase per field. RTDB URL defaults to jobbrush-f2eb4 unless FIREBASE_DATABASE_URL is set.
+ * Env SMTP overrides Firebase per field. RTDB URL defaults to jobrush-f2eb4 unless FIREBASE_DATABASE_URL is set.
  * @returns {Promise<{ transport: import('nodemailer').Transporter, from: string } | null>}
  */
 async function resolveMailer() {

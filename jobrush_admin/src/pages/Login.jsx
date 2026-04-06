@@ -62,7 +62,7 @@ export default function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full pl-11 pr-4 py-3 rounded-xl bg-admin-950 border border-admin-600 text-white placeholder-admin-600 focus:ring-2 focus:ring-admin-500 focus:border-transparent"
-              placeholder="e.g. sd.niladri@gmail.com (from Firebase)"
+              placeholder="Username"
               autoComplete="username"
             />
           </div>
@@ -88,37 +88,8 @@ export default function Login() {
           </button>
         </form>
         <p className="text-center text-xs text-admin-500 mt-6">
-          Username and password are whatever you stored under{' '}
-          <code className="text-admin-400">adminPortal/credentials</code> in Firebase (seed script default:{' '}
-          <code className="text-admin-400">sd.niladri@gmail.com</code>). They are not your Netlify or Google password.
+          Credentials live in Firebase at <code className="text-admin-400">adminPortal/credentials</code>.
         </p>
-        <details className="mt-4 rounded-xl border border-admin-800 bg-admin-950/60 px-4 py-3 text-xs text-admin-400">
-          <summary className="cursor-pointer font-medium text-admin-300 select-none">
-            Yellow “configure Realtime Database URL” warning in the console?
-          </summary>
-          <ul className="mt-3 list-disc list-inside space-y-2 leading-relaxed">
-            <li>
-              In <strong className="text-admin-300">Google Cloud Console</strong> → APIs &amp; Services → Credentials →
-              your <strong>Browser key</strong> (same as <code className="text-admin-500">VITE_FIREBASE_API_KEY</code>):
-              under <strong>Website restrictions</strong>, add{' '}
-              <code className="text-admin-500">https://jbrush.netlify.app/*</code> and{' '}
-              <code className="text-admin-500">https://*.netlify.app/*</code>. A missing referrer blocks RTDB WebSockets
-              and triggers that warning.
-            </li>
-            <li>
-              Under <strong>API restrictions</strong>, use “Don’t restrict” or include Firebase-related APIs (at minimum
-              the project’s Firebase services).
-            </li>
-            <li>
-              In <strong>Firebase</strong> → Realtime Database → <strong>Rules</strong>, allow read on{' '}
-              <code className="text-admin-500">adminPortal/credentials</code> for your current rules setup.
-            </li>
-            <li>
-              Redeploy Netlify after changing env vars. Hard-refresh the admin page (
-              <kbd className="text-admin-500">Ctrl+Shift+R</kbd>).
-            </li>
-          </ul>
-        </details>
       </div>
     </div>
   )

@@ -43,7 +43,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 // Realtime Database URL (asia-southeast1 region)
-const DATABASE_URL = 'https://jobbrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
+const DATABASE_URL = 'https://jobrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
 
 // =============================================================================
 // COLLECTION STRUCTURE - Add new collections/fields HERE first, then run script

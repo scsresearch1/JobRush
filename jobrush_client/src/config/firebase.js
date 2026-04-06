@@ -14,7 +14,7 @@ import {
   JOBBRUSH_STORAGE_BUCKET_DEFAULT,
 } from './firebaseJobbrushDefaults.js'
 
-// projectId / authDomain / databaseURL locked to jobbrush-f2eb4 (env cannot mismatch Netlify typos)
+// projectId / authDomain / databaseURL locked to jobrush-f2eb4 (env cannot mismatch Netlify typos)
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'your-api-key',
   authDomain: JOBBRUSH_AUTH_DOMAIN,
