@@ -53,37 +53,29 @@ Deploy `dist/` to any static host (separate Netlify site, S3, etc.). Set the Fir
 
 **Approve payment** / **Reject** updates `userdb` in Firebase, then asks the JobRush API to send email.
 
-1. **API server** (`server/` on Render, etc.): set `ADMIN_API_SECRET` and SMTP variables — see `server/.env.example` (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, …).
-2. **Admin site build** (same Netlify build as JobRush): set `VITE_ADMIN_API_SECRET` to the **same** string as `ADMIN_API_SECRET`. Use `VITE_JOBRUSH_API_BASE` if the API URL is not `https://jobrush.onrender.com`.
+1. **API server** (`server/` on Render, etc.): set `ADMIN_API_SECRET` — see `server/.env.example`.
+2. **SMTP** — either:
+   - Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and optionally `MAIL_FROM` on the API server, **or**
+   - Use **Settings → Change admin email** in this portal: fill **Outbound email (SMTP)** and save (stored at `adminPortal/emailOutbound`). Then set **`FIREBASE_DATABASE_URL`** on the API to your Realtime Database URL (same as the web app). Env vars still **override** Firebase per field when set. Restart/redeploy the API after changing Firebase or env.
+3. **Admin site build** (Netlify *Site settings → Environment variables*): set **`VITE_ADMIN_API_SECRET`** to the **same** string as **`ADMIN_API_SECRET`** on the API server, then **redeploy** (Vite inlines env at build time). Use `VITE_JOBRUSH_API_BASE` if the API URL is not `https://jobrush.onrender.com`.
 
-If SMTP or the secret is missing, the user record still updates; the UI will report that email delivery failed.
+Realtime Database rules must allow read/write on `adminPortal/emailOutbound` (included in the repo’s `firebase-database.rules.json`).
+
+To **seed** `emailOutbound` from your machine without using the admin UI, run `npm run firebase:create-collections` with `JOBRUSH_EMAIL_OUTBOUND_SMTP_PASS` (and mail/user env vars) set in the shell only — see the comment block at the top of `scripts/create-firebase-collections.js`. Do not commit those values.
+
+**Settings → Outbound email** includes **Send test email** (uses `POST /api/admin/send-test-email`). With an app password typed in the form, the test can run before you save; otherwise the API uses Firebase / env.
+
+If SMTP or the secret is missing, the user record still updates; the UI will report that email delivery failed (e.g. “Missing `VITE_ADMIN_API_SECRET`”).
 
 ## Firebase rules
 
 The admin app uses the **client SDK**. RTDB rules must allow read on `adminPortal/credentials` for login and write for password changes — or the portal cannot work. **Plain passwords in RTDB are sensitive:** restrict rules (e.g. no public read/write), deploy the admin app only on a trusted network, or move to Firebase Auth later.
 
-If login fails with a **permission** message, merge something like this into your Realtime Database rules (adjust the rest of your tree as needed):
+**Repo template:** copy the contents of [`firebase-database.rules.json`](../firebase-database.rules.json) (repository root) into **Firebase Console → Realtime Database → Rules** and publish. That file allows read/write on `userdb`, `interviewReports`, `atsReports`, and `adminPortal` (credentials + payment QR) so the client and admin portals work without Firebase Auth. Replace with stricter rules before production if you can.
 
-```json
-{
-  "rules": {
-    "adminPortal": {
-      "credentials": {
-        ".read": true,
-        ".write": true
-      },
-      "paymentQr": {
-        ".read": true,
-        ".write": true
-      }
-    }
-  }
-}
-```
+If you merge manually, you still need **all** of the above paths; admin-only rules are not enough — Report management and the client need `atsReports` / `interviewReports` / `userdb`.
 
-The **client app** reads `adminPortal/paymentQr` to show the payment QR; allow `.read` there (or use a Cloud Function / Storage if you prefer not to store images in RTDB). Tighten `.write` in production if you can (e.g. only server-side writes).
-
-You still need rules for `userdb`, `interviewReports`, etc.; the above only shows the admin slice.
+The **client app** reads `adminPortal/paymentQr` to show the payment QR; tighten `.write` in production if possible (e.g. only server-side writes).
 
 ## Troubleshooting “Could not load admin credentials”
 

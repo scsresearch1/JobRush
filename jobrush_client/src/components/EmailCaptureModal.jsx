@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import { XMarkIcon, EnvelopeIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
-import { saveUser } from '../services/database'
+import { saveUser, getUserByEmail, touchUserLastSeen } from '../services/database'
 import { USERDB_FIELDS } from '../config/databaseSchema'
 import { getISTTimestamp } from '../utils/timestamp.js'
+import { mapFirebaseUserToLocal, computePostEmailFlow } from '../utils/journeyState.js'
 
 const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
   const [email, setEmail] = useState('')
@@ -22,12 +23,47 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
       return
     }
 
+    const normalizedEmail = email.trim().toLowerCase()
     setIsLoading(true)
 
     try {
+      let existing = null
+      try {
+        existing = await getUserByEmail(normalizedEmail)
+      } catch (lookupErr) {
+        console.error('Firebase lookup failed:', lookupErr)
+        setError('Could not reach Firebase. Check .env.local (see .env.example).')
+        setIsLoading(false)
+        return
+      }
+
+      if (existing) {
+        const { uniqueId, data } = existing
+        const flow = computePostEmailFlow(data)
+        if (flow.kind === 'blocked_suspended') {
+          setError('This account is suspended. Please contact support.')
+          setIsLoading(false)
+          return
+        }
+        try {
+          await touchUserLastSeen(uniqueId)
+        } catch {
+          /* non-fatal */
+        }
+        const userData = {
+          ...mapFirebaseUserToLocal(data, uniqueId, {}),
+          loginTime: getISTTimestamp(),
+        }
+        localStorage.setItem('jobRush_user', JSON.stringify(userData))
+        onSuccess({ user: userData, flow })
+        onClose()
+        setIsLoading(false)
+        return
+      }
+
       const uniqueId = crypto.randomUUID?.() || `user_${Date.now()}_${Math.random().toString(36).slice(2)}`
       try {
-        await saveUser(uniqueId, email.trim(), {
+        await saveUser(uniqueId, normalizedEmail, {
           [USERDB_FIELDS.ACCESS_STATUS]: 'pending_payment',
           [USERDB_FIELDS.LAST_SEEN_AT]: new Date().toISOString(),
         })
@@ -39,13 +75,15 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
       }
       const userData = {
         uniqueId,
-        email: email.trim(),
+        email: normalizedEmail,
         isAuthenticated: false,
         accessStatus: 'pending_payment',
+        atsChecksUsed: 0,
+        mockInterviewsUsed: 0,
         loginTime: getISTTimestamp(),
       }
       localStorage.setItem('jobRush_user', JSON.stringify(userData))
-      onSuccess(userData)
+      onSuccess({ user: userData, flow: { kind: 'payment_offer' } })
       onClose()
     } catch (err) {
       console.error(err)

@@ -9,6 +9,19 @@ export const COLLECTIONS = {
 export const ADMIN_PORTAL_KEYS = {
   CREDENTIALS: 'credentials',
   PAYMENT_QR: 'paymentQr',
+  /** SMTP + From address for payment / user emails (API reads via FIREBASE_DATABASE_URL) */
+  EMAIL_OUTBOUND: 'emailOutbound',
+}
+
+/** Stored at adminPortal/emailOutbound */
+export const EMAIL_OUTBOUND_FIELDS = {
+  MAIL_FROM: 'mailFrom',
+  SMTP_HOST: 'smtpHost',
+  SMTP_PORT: 'smtpPort',
+  SMTP_SECURE: 'smtpSecure',
+  SMTP_USER: 'smtpUser',
+  SMTP_PASS: 'smtpPass',
+  UPDATED_AT: 'updatedAt',
 }
 
 export const ADMIN_PORTAL_FIELDS = {

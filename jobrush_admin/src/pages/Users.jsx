@@ -123,10 +123,18 @@ export default function Users() {
     if (!email) throw new Error('User has no email on file.')
 
     if (decision === 'approved') {
-      await updateUserRecord(uid, {
+      const atsUsed = Number(row[USERDB_FIELDS.ATS_CHECKS_USED]) || 0
+      const mockUsed = Number(row[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0
+      const renewalCycle = atsUsed >= QUOTA_ATS && mockUsed >= QUOTA_MOCK
+      const patch = {
         [USERDB_FIELDS.ACCESS_STATUS]: 'active',
         [USERDB_FIELDS.SUSPENDED]: false,
-      })
+      }
+      if (renewalCycle) {
+        patch[USERDB_FIELDS.ATS_CHECKS_USED] = 0
+        patch[USERDB_FIELDS.MOCK_INTERVIEWS_USED] = 0
+      }
+      await updateUserRecord(uid, patch)
     } else {
       await updateUserRecord(uid, {
         [USERDB_FIELDS.ACCESS_STATUS]: 'pending_payment',

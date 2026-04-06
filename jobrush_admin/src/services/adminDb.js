@@ -4,6 +4,7 @@ import {
   COLLECTIONS,
   ADMIN_PORTAL_KEYS,
   ADMIN_PORTAL_FIELDS,
+  EMAIL_OUTBOUND_FIELDS,
   USERDB_FIELDS,
   INTERVIEW_REPORTS_FIELDS,
   ATS_REPORT_FIELDS,
@@ -96,6 +97,51 @@ export function adminCredentialsRef() {
 
 export function paymentQrRef() {
   return ref(database, `${COLLECTIONS.ADMIN_PORTAL}/${ADMIN_PORTAL_KEYS.PAYMENT_QR}`)
+}
+
+export function emailOutboundRef() {
+  return ref(database, `${COLLECTIONS.ADMIN_PORTAL}/${ADMIN_PORTAL_KEYS.EMAIL_OUTBOUND}`)
+}
+
+/**
+ * Outbound mail config for the API (password never returned).
+ * @returns {Promise<{ mailFrom: string, smtpHost: string, smtpPort: number, smtpSecure: boolean, smtpUser: string, hasPass: boolean } | null>}
+ */
+export async function getEmailOutboundSettings() {
+  const snapshot = await get(emailOutboundRef())
+  if (!snapshot.exists()) return null
+  const v = snapshot.val()
+  const pass = v?.[EMAIL_OUTBOUND_FIELDS.SMTP_PASS]
+  return {
+    mailFrom: typeof v?.[EMAIL_OUTBOUND_FIELDS.MAIL_FROM] === 'string' ? v[EMAIL_OUTBOUND_FIELDS.MAIL_FROM] : '',
+    smtpHost: typeof v?.[EMAIL_OUTBOUND_FIELDS.SMTP_HOST] === 'string' ? v[EMAIL_OUTBOUND_FIELDS.SMTP_HOST] : '',
+    smtpPort: Number(v?.[EMAIL_OUTBOUND_FIELDS.SMTP_PORT]) || 587,
+    smtpSecure: v?.[EMAIL_OUTBOUND_FIELDS.SMTP_SECURE] === true,
+    smtpUser: typeof v?.[EMAIL_OUTBOUND_FIELDS.SMTP_USER] === 'string' ? v[EMAIL_OUTBOUND_FIELDS.SMTP_USER] : '',
+    hasPass: typeof pass === 'string' && pass.length > 0,
+  }
+}
+
+/**
+ * @param {{ mailFrom: string, smtpHost: string, smtpPort: number, smtpSecure: boolean, smtpUser: string, smtpPass?: string }} fields — omit or leave smtpPass empty to keep the saved app password
+ */
+export async function setEmailOutboundSettings(fields) {
+  const snapshot = await get(emailOutboundRef())
+  const prev = snapshot.exists() ? snapshot.val() : {}
+  const nextPass =
+    typeof fields.smtpPass === 'string' && fields.smtpPass.length > 0
+      ? fields.smtpPass
+      : prev[EMAIL_OUTBOUND_FIELDS.SMTP_PASS] || ''
+
+  await set(emailOutboundRef(), {
+    [EMAIL_OUTBOUND_FIELDS.MAIL_FROM]: String(fields.mailFrom ?? '').trim(),
+    [EMAIL_OUTBOUND_FIELDS.SMTP_HOST]: String(fields.smtpHost ?? '').trim(),
+    [EMAIL_OUTBOUND_FIELDS.SMTP_PORT]: Number(fields.smtpPort) || 587,
+    [EMAIL_OUTBOUND_FIELDS.SMTP_SECURE]: Boolean(fields.smtpSecure),
+    [EMAIL_OUTBOUND_FIELDS.SMTP_USER]: String(fields.smtpUser ?? '').trim(),
+    [EMAIL_OUTBOUND_FIELDS.SMTP_PASS]: nextPass,
+    [EMAIL_OUTBOUND_FIELDS.UPDATED_AT]: new Date().toISOString(),
+  })
 }
 
 /**

@@ -472,18 +472,121 @@ app.post('/api/chat', async (req, res) => {
   }
 })
 
+/**
+ * POST /api/notify-new-payment-request
+ * Body: { email, paymentReference, couponCode? }
+ * Sends an internal notification email (SMTP must be configured on this server).
+ */
+app.post('/api/notify-new-payment-request', async (req, res) => {
+  try {
+    const { email, paymentReference, couponCode } = req.body || {}
+    const userEmail = String(email || '').trim()
+    const ref = String(paymentReference || '').trim()
+    if (!userEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
+      return res.status(400).json({ error: 'A valid user email is required.' })
+    }
+    if (ref.length < 6) {
+      return res.status(400).json({ error: 'Payment reference must be at least 6 characters.' })
+    }
+
+    const notifyTo = String(process.env.PAYMENT_NOTIFY_TO || 'hirefortune90@gmail.com').trim()
+    const mailer = await resolveMailer()
+    if (!mailer) {
+      return res.status(503).json({
+        error:
+          'Email is not configured on the server. Set SMTP_HOST, SMTP_USER, SMTP_PASS (and optional MAIL_FROM) on the API host, or configure outbound email in admin Settings plus FIREBASE_DATABASE_URL.',
+      })
+    }
+
+    const couponLine =
+      couponCode && String(couponCode).trim()
+        ? `Coupon code (submitted): ${String(couponCode).trim()}\n`
+        : 'Coupon code: (none submitted)\n'
+
+    const text =
+      `A new user has submitted a payment access request.\n\n` +
+      `User email: ${userEmail}\n` +
+      `Payment reference (UPI / transaction ID): ${ref}\n` +
+      `${couponLine}\n` +
+      `Server received at: ${new Date().toISOString()}\n`
+
+    const subject = 'Urgent-New User'
+
+    try {
+      await mailer.transport.sendMail({
+        from: mailer.from,
+        to: notifyTo,
+        replyTo: userEmail,
+        subject,
+        text,
+      })
+      res.json({ ok: true })
+    } catch (e) {
+      console.error('notify-new-payment-request sendMail:', e)
+      res.status(500).json({ error: e.message || 'Failed to send notification email.' })
+    }
+  } catch (err) {
+    console.error('notify-new-payment-request:', err)
+    res.status(500).json({ error: err.message || 'Unexpected error' })
+  }
+})
+
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, llm: !!groq, tts: !!textToSpeechClient })
 })
 
-function createMailTransport() {
-  const host = process.env.SMTP_HOST
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
+const RTDB_EMAIL_OUTBOUND_PATH = 'adminPortal/emailOutbound'
+/** @type {{ at: number, val: object | null, ok: boolean }} */
+let emailOutboundCache = { at: 0, val: null, ok: false }
+
+async function fetchEmailOutboundFromRtdb() {
+  if (Date.now() - emailOutboundCache.at < 30_000 && emailOutboundCache.ok) {
+    return emailOutboundCache.val
+  }
+  const base = process.env.FIREBASE_DATABASE_URL
+  if (!base) {
+    emailOutboundCache = { at: Date.now(), val: null, ok: true }
+    return null
+  }
+  try {
+    const url = `${base.replace(/\/$/, '')}/${RTDB_EMAIL_OUTBOUND_PATH}.json`
+    const r = await fetch(url)
+    if (!r.ok) {
+      emailOutboundCache = { at: Date.now(), val: null, ok: true }
+      return null
+    }
+    const val = await r.json()
+    emailOutboundCache = { at: Date.now(), val, ok: true }
+    return val && typeof val === 'object' ? val : null
+  } catch (e) {
+    console.warn('fetchEmailOutboundFromRtdb:', e?.message || e)
+    emailOutboundCache = { at: Date.now(), val: null, ok: true }
+    return null
+  }
+}
+
+/**
+ * Env vars override Firebase per field. If using only the admin UI, set FIREBASE_DATABASE_URL on this server.
+ * @returns {Promise<{ transport: import('nodemailer').Transporter, from: string } | null>}
+ */
+async function resolveMailer() {
+  const db = await fetchEmailOutboundFromRtdb()
+  const host = process.env.SMTP_HOST || (db && String(db.smtpHost || '').trim()) || ''
+  const user = process.env.SMTP_USER || (db && String(db.smtpUser || '').trim()) || ''
+  const pass = process.env.SMTP_PASS || (db && String(db.smtpPass || '').trim()) || ''
   if (!host || !user || !pass) return null
-  const port = Number(process.env.SMTP_PORT || 587)
-  const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true'
-  return nodemailer.createTransport({ host, port, secure, auth: { user, pass } })
+  const port = Number(process.env.SMTP_PORT || db?.smtpPort || 587)
+  const secureEnv = process.env.SMTP_SECURE
+  const secure =
+    secureEnv !== undefined && secureEnv !== ''
+      ? String(secureEnv).toLowerCase() === 'true'
+      : db?.smtpSecure === true
+  const from =
+    process.env.MAIL_FROM ||
+    (db && String(db.mailFrom || '').trim()) ||
+    user
+  const transport = nodemailer.createTransport({ host, port, secure, auth: { user, pass } })
+  return { transport, from }
 }
 
 /**
@@ -507,14 +610,15 @@ app.post('/api/admin/notify-payment-decision', async (req, res) => {
     return res.status(400).json({ error: 'decision must be approved or rejected' })
   }
 
-  const transport = createMailTransport()
-  if (!transport) {
+  const mailer = await resolveMailer()
+  if (!mailer) {
     return res.status(503).json({
-      error: 'Email is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and MAIL_FROM on the API server.',
+      error:
+        'Email is not configured. Set SMTP_* (and optional MAIL_FROM) on the API server, or save outbound mail in JobRush admin → Settings → Outbound email and set FIREBASE_DATABASE_URL here.',
     })
   }
 
-  const from = process.env.MAIL_FROM || process.env.SMTP_USER
+  const { transport, from } = mailer
   const subject =
     d === 'approved' ? 'JobRush — your access is active' : 'JobRush — payment verification update'
   const refLine = paymentReference ? `Reference you submitted: ${paymentReference}\n\n` : ''
@@ -555,14 +659,15 @@ app.post('/api/admin/send-user-email', async (req, res) => {
     return res.status(400).json({ error: 'subject and text are required' })
   }
 
-  const transport = createMailTransport()
-  if (!transport) {
+  const mailer = await resolveMailer()
+  if (!mailer) {
     return res.status(503).json({
-      error: 'Email is not configured. Set SMTP_* and MAIL_FROM on the API server.',
+      error:
+        'Email is not configured. Set SMTP_* on the API server, or use admin Settings → Outbound email plus FIREBASE_DATABASE_URL.',
     })
   }
 
-  const from = process.env.MAIL_FROM || process.env.SMTP_USER
+  const { transport, from } = mailer
   const clipped = body.length > 12000 ? `${body.slice(0, 12000)}\n\n[Message truncated for email size limits.]\n` : body
 
   try {
@@ -571,6 +676,65 @@ app.post('/api/admin/send-user-email', async (req, res) => {
   } catch (e) {
     console.error('send-user-email error', e)
     res.status(500).json({ error: e.message || 'Failed to send email' })
+  }
+})
+
+/**
+ * Build transporter from admin "draft" form (optional test-before-save).
+ */
+function buildMailerFromDraft(d) {
+  if (!d || typeof d !== 'object') return null
+  const host = String(d.smtpHost || '').trim()
+  const user = String(d.smtpUser || '').trim()
+  const pass = String(d.smtpPass || '').replace(/\s+/g, '').trim()
+  if (!host || !user || !pass) return null
+  if (pass.length > 256) return null
+  const port = Number(d.smtpPort) || 587
+  const secure = d.smtpSecure === true
+  const from = String(d.mailFrom || '').trim() || user
+  const transport = nodemailer.createTransport({ host, port, secure, auth: { user, pass } })
+  return { transport, from }
+}
+
+/**
+ * POST /api/admin/send-test-email
+ * Header: Authorization: Bearer ADMIN_API_SECRET
+ * Body: { toEmail, draft?: { mailFrom, smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass } }
+ * If draft is complete (incl. smtpPass), uses draft; else reloads Firebase and uses resolveMailer().
+ */
+app.post('/api/admin/send-test-email', async (req, res) => {
+  const expected = process.env.ADMIN_API_SECRET
+  const hdr = req.headers.authorization || ''
+  if (!expected || hdr !== `Bearer ${expected}`) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  const email = String(req.body?.toEmail || '').trim()
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Valid toEmail is required' })
+  }
+
+  let mailer = buildMailerFromDraft(req.body?.draft)
+  if (!mailer) {
+    emailOutboundCache = { at: 0, val: null, ok: false }
+    mailer = await resolveMailer()
+  }
+  if (!mailer) {
+    return res.status(503).json({
+      error:
+        'Email is not configured. Save outbound settings to Firebase (and set FIREBASE_DATABASE_URL on this server), set SMTP_* env vars, or send a draft with smtpPass filled to test before saving.',
+    })
+  }
+
+  const { transport, from } = mailer
+  const subject = 'JobRush — test email'
+  const text = `This is a test message from the JobRush API.\n\nIf you received this, outbound SMTP is working.\n\nSent at ${new Date().toISOString()}\n`
+
+  try {
+    await transport.sendMail({ from, to: email, subject, text })
+    res.json({ ok: true })
+  } catch (e) {
+    console.error('send-test-email error', e)
+    res.status(500).json({ error: e.message || 'Failed to send test email' })
   }
 })
 

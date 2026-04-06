@@ -1,0 +1,30 @@
+{
+  "rules": {
+    "userdb": {
+      ".read": true,
+      ".write": true
+    },
+    "interviewReports": {
+      ".read": true,
+      ".write": true
+    },
+    "atsReports": {
+      ".read": true,
+      ".write": true
+    },
+    "adminPortal": {
+      "credentials": {
+        ".read": true,
+        ".write": true
+      },
+      "paymentQr": {
+        ".read": true,
+        ".write": true
+      },
+      "emailOutbound": {
+        ".read": true,
+        ".write": true
+      }
+    }
+  }
+}

@@ -21,6 +21,7 @@ import PresenceHeartbeat from './components/PresenceHeartbeat'
 import LoadTestPage from '@jobrush/testing-engine/LoadTestPage.jsx'
 import { hasAppAccess } from './utils/access.js'
 import { getUser } from './services/database.js'
+import { mapFirebaseUserToLocal, computeStartJourneyFlow } from './utils/journeyState.js'
 
 function ProtectedRoute({ children }) {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
@@ -50,8 +51,7 @@ function App() {
           if (!data) return
           const merged = {
             ...u,
-            accessStatus: data.accessStatus ?? u.accessStatus,
-            suspended: data.suspended === true ? true : data.suspended === false ? false : u.suspended,
+            ...mapFirebaseUserToLocal(data, uid, u),
           }
           localStorage.setItem('jobRush_user', JSON.stringify(merged))
         })
@@ -68,36 +68,78 @@ function App() {
     open: false,
     email: '',
     initialStep: 'offer',
+    mode: 'activation',
   })
 
-  const openPaymentModal = (email, initialStep = 'offer') => {
-    setPaymentModal({ open: true, email: email || '', initialStep })
+  const openPaymentModal = (email, initialStep = 'offer', mode = 'activation') => {
+    setPaymentModal({ open: true, email: email || '', initialStep, mode })
   }
 
   const closePaymentModal = () => {
     setPaymentModal((prev) => ({ ...prev, open: false }))
   }
 
-  const handleStartJourney = () => {
-    const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
-    if (hasAppAccess(user)) {
+  const handleStartJourney = async () => {
+    let user = {}
+    try {
+      user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
+    } catch {
+      user = {}
+    }
+    const uid = user?.uniqueId
+    if (uid && !String(uid).startsWith('local_')) {
+      try {
+        const data = await getUser(uid)
+        if (data) {
+          const merged = { ...user, ...mapFirebaseUserToLocal(data, uid, user) }
+          localStorage.setItem('jobRush_user', JSON.stringify(merged))
+          user = merged
+        }
+      } catch {
+        /* keep cached user */
+      }
+    }
+
+    const flow = computeStartJourneyFlow(user)
+    if (flow.kind === 'blocked_suspended') {
+      window.alert('Your account is suspended. Please contact support.')
+      return
+    }
+    if (flow.kind === 'app') {
       setShowTransition(true)
       return
     }
-    if (user.accessStatus === 'awaiting_activation' && user.email) {
-      openPaymentModal(user.email, 'confirmation')
+    if (flow.kind === 'repayment' && flow.email) {
+      openPaymentModal(flow.email, 'offer', 'repayment')
       return
     }
-    if (user.accessStatus === 'pending_payment' && user.email) {
-      openPaymentModal(user.email, 'offer')
+    if (flow.kind === 'payment_confirmation' && flow.email) {
+      openPaymentModal(flow.email, 'confirmation', 'activation')
+      return
+    }
+    if (flow.kind === 'payment_offer' && flow.email) {
+      openPaymentModal(flow.email, 'offer', 'activation')
       return
     }
     setShowEmailModal(true)
   }
 
-  const handleEmailSuccess = (userData) => {
+  const handleEmailSuccess = ({ user: userData, flow }) => {
     setShowEmailModal(false)
-    openPaymentModal(userData?.email, 'offer')
+    const kind = flow?.kind
+    if (kind === 'app') {
+      setShowTransition(true)
+      return
+    }
+    if (kind === 'payment_confirmation') {
+      openPaymentModal(userData?.email, 'confirmation', 'activation')
+      return
+    }
+    if (kind === 'repayment') {
+      openPaymentModal(userData?.email, 'offer', 'repayment')
+      return
+    }
+    openPaymentModal(userData?.email, 'offer', 'activation')
   }
 
   const handleTransitionComplete = () => {
@@ -141,6 +183,7 @@ function AppContent({
         onClose={closePaymentModal}
         email={paymentModal.email}
         initialStep={paymentModal.initialStep}
+        mode={paymentModal.mode}
       />
       <EmailCaptureModal
         isOpen={showEmailModal}

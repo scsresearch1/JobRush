@@ -106,13 +106,17 @@ export async function getUser(uniqueId) {
  * @returns {Promise<{uniqueId: string, data: object} | null>}
  */
 export async function getUserByEmail(emailId) {
+  const needle = String(emailId || '').trim().toLowerCase()
+  if (!needle) return null
+
   const snapshot = await get(userdbRef())
   if (!snapshot.exists()) return null
 
   const users = snapshot.val()
   for (const [id, data] of Object.entries(users)) {
     if (id === '_schema' || !data) continue
-    if (data[USERDB_FIELDS.EMAIL_ID] === emailId) {
+    const stored = String(data[USERDB_FIELDS.EMAIL_ID] || '').trim().toLowerCase()
+    if (stored === needle) {
       return { uniqueId: id, data }
     }
   }

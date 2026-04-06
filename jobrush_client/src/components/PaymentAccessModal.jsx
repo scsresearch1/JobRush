@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { fetchPaymentQrImageUrlFromFirebase } from '../services/paymentQrFirebase.js'
 import { resolvePaymentQrFallbackSrc } from '../config/paymentQr.js'
 import { syncUserFieldsToFirebase } from '../services/database.js'
+import { notifyNewPaymentRequest } from '../services/groqService.js'
 import {
   XMarkIcon,
   QrCodeIcon,
@@ -19,7 +20,8 @@ const MOCK_INTERVIEWS = 5
  * Post-email onboarding: plan summary, coupon field (logic TBD), QR payment,
  * payment reference capture, and access request confirmation.
  */
-const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer' }) => {
+const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mode = 'activation' }) => {
+  const isRenewal = mode === 'repayment'
   const [step, setStep] = useState('offer')
   const [couponCode, setCouponCode] = useState('')
   const [couponNotice, setCouponNotice] = useState('')
@@ -103,22 +105,34 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer' }) =
     }
     setRefError('')
     setSubmitting(true)
-    await new Promise((r) => setTimeout(r, 400))
-    const patch = {
-      accessStatus: 'awaiting_activation',
-      paymentReference: ref,
-      couponCodePending: couponCode.trim() || null,
-      accessRequestedAt: new Date().toISOString(),
-      isAuthenticated: false,
+    try {
+      await notifyNewPaymentRequest({
+        email,
+        paymentReference: ref,
+        couponCode: couponCode.trim() || null,
+      })
+      const patch = {
+        accessStatus: 'awaiting_activation',
+        paymentReference: ref,
+        couponCodePending: couponCode.trim() || null,
+        accessRequestedAt: new Date().toISOString(),
+        isAuthenticated: false,
+      }
+      persistUserPatch(patch)
+      appendAccessRequestLog({
+        email,
+        upiReference: ref,
+        couponCode: couponCode.trim() || null,
+      })
+      setStep('confirmation')
+    } catch (err) {
+      setRefError(
+        err?.message ||
+          'We could not send your request. Check your connection and try again, or contact support with your payment reference.'
+      )
+    } finally {
+      setSubmitting(false)
     }
-    persistUserPatch(patch)
-    appendAccessRequestLog({
-      email,
-      upiReference: ref,
-      couponCode: couponCode.trim() || null,
-    })
-    setSubmitting(false)
-    setStep('confirmation')
   }
 
   const handleRetryPayment = () => {
@@ -151,7 +165,7 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer' }) =
             </div>
             <div className="min-w-0">
               <h2 id="payment-access-title" className="text-lg font-semibold text-slate-900 tracking-tight">
-                Activate JobRush access
+                {isRenewal ? 'Renew JobRush access' : 'Activate JobRush access'}
               </h2>
               <p className="text-sm text-slate-500 truncate" title={email}>
                 {email}
@@ -184,12 +198,24 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer' }) =
               <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-5">
                 <div className="flex items-center gap-2 text-slate-800 font-semibold mb-3">
                   <BanknotesIcon className="w-5 h-5 text-primary-600" />
-                  Professional plan — one-time activation
+                  {isRenewal
+                    ? 'Included sessions used — renew your plan'
+                    : 'Professional plan — one-time activation'}
                 </div>
                 <p className="text-slate-600 text-sm leading-relaxed mb-4">
-                  A single payment of{' '}
-                  <span className="font-semibold text-slate-900">₹{PLAN_AMOUNT_INR.toLocaleString('en-IN')}</span>{' '}
-                  unlocks the following on your account:
+                  {isRenewal ? (
+                    <>
+                      You have used all included resume checks and mock interviews. A payment of{' '}
+                      <span className="font-semibold text-slate-900">₹{PLAN_AMOUNT_INR.toLocaleString('en-IN')}</span>{' '}
+                      starts a new cycle with the same allowances:
+                    </>
+                  ) : (
+                    <>
+                      A single payment of{' '}
+                      <span className="font-semibold text-slate-900">₹{PLAN_AMOUNT_INR.toLocaleString('en-IN')}</span>{' '}
+                      unlocks the following on your account:
+                    </>
+                  )}
                 </p>
                 <ul className="text-sm text-slate-700 space-y-2 list-disc list-inside marker:text-primary-500">
                   <li>
