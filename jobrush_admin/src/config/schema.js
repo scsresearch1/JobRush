@@ -9,7 +9,7 @@ export const COLLECTIONS = {
 export const ADMIN_PORTAL_KEYS = {
   CREDENTIALS: 'credentials',
   PAYMENT_QR: 'paymentQr',
-  /** SMTP + From address for payment / user emails (API reads via FIREBASE_DATABASE_URL) */
+  /** SMTP + From address for payment / user emails (API reads RTDB; URL default in server/index.js) */
   EMAIL_OUTBOUND: 'emailOutbound',
 }
 

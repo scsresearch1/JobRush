@@ -21,7 +21,7 @@ function withTimeout(promise, ms, actionLabel) {
       setTimeout(() => {
         reject(
           new Error(
-            `${actionLabel} timed out after ${Math.round(ms / 1000)}s. Confirm Netlify has VITE_FIREBASE_DATABASE_URL (exact Realtime Database URL), rules allow the path, and your network is OK.`
+            `${actionLabel} timed out after ${Math.round(ms / 1000)}s. Check Firebase RTDB rules, realtimeDatabaseUrl.js matches your project, and your network is OK.`
           )
         )
       }, ms)
@@ -186,7 +186,7 @@ export default function SettingsEmail() {
         setOutbound((o) => ({ ...o, hasPass: true }))
         setSmtpMessage({
           type: 'ok',
-          text: 'Saved to Firebase (adminPortal/emailOutbound). Set FIREBASE_DATABASE_URL on your API host so the server can read it, then approve a payment to test.',
+          text: 'Saved to Firebase (adminPortal/emailOutbound). The API uses the same DB URL as the code by default — redeploy Render if needed, then test email or approve payment.',
         })
       } else {
         setSmtpMessage({ type: 'error', text: result.error || 'Could not save email settings.' })
@@ -313,9 +313,11 @@ export default function SettingsEmail() {
               defaults below.
             </li>
             <li>
-              On your API host (Render etc.), set <code className="text-admin-500">FIREBASE_DATABASE_URL</code> to the
-              same URL as in Firebase (e.g. <code className="text-xs text-admin-500">...firebasedatabase.app</code>) so
-              the server can read this node. Redeploy or restart the API after saving here.
+              The API server reads this from Firebase using the database URL in code (
+              <code className="text-admin-500 text-xs">server/index.js</code> /{' '}
+              <code className="text-admin-500 text-xs">realtimeDatabaseUrl.js</code>). Optional env{' '}
+              <code className="text-admin-500">FIREBASE_DATABASE_URL</code> overrides that. Redeploy the API after
+              changing SMTP here if mail still fails.
             </li>
             <li>
               Optionally keep <code className="text-admin-500">SMTP_*</code> in server env instead — those values override

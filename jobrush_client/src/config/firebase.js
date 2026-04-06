@@ -7,14 +7,15 @@
 
 import { initializeApp } from 'firebase/app'
 import { getDatabase } from 'firebase/database'
+import { REALTIME_DATABASE_URL } from './realtimeDatabaseUrl.js'
 
-// Firebase Web Config - use env vars or replace with your values from Firebase Console
+// Firebase Web Config — API key etc. from env; DB URL is fixed in realtimeDatabaseUrl.js
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'your-api-key',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'jobrush-f2eb4.firebaseapp.com',
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || 'https://jobrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'jobrush-f2eb4',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'jobrush-f2eb4.firebasestorage.app',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'jobbrush-f2eb4.firebaseapp.com',
+  databaseURL: REALTIME_DATABASE_URL,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'jobbrush-f2eb4',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'jobbrush-f2eb4.firebasestorage.app',
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
   appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
 }

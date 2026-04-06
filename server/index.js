@@ -10,6 +10,10 @@ import cors from 'cors'
 import Groq from 'groq-sdk'
 import nodemailer from 'nodemailer'
 
+/** Same RTDB as client/admin (jobrush_client/src/config/realtimeDatabaseUrl.js). Override with FIREBASE_DATABASE_URL if needed. */
+const DEFAULT_FIREBASE_RTDB_URL =
+  'https://jobbrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
+
 const app = express()
 
 // CORS: reflect request origin (required by some proxies)
@@ -494,7 +498,7 @@ app.post('/api/notify-new-payment-request', async (req, res) => {
     if (!mailer) {
       return res.status(503).json({
         error:
-          'Email is not configured on the server. Set SMTP_HOST, SMTP_USER, SMTP_PASS (and optional MAIL_FROM) on the API host, or configure outbound email in admin Settings plus FIREBASE_DATABASE_URL.',
+          'Email is not configured on the server. Set SMTP_HOST, SMTP_USER, SMTP_PASS (and optional MAIL_FROM) on the API host, or save outbound email in JobRush admin Settings (read from Firebase RTDB).',
       })
     }
 
@@ -543,13 +547,9 @@ async function fetchEmailOutboundFromRtdb() {
   if (Date.now() - emailOutboundCache.at < 30_000 && emailOutboundCache.ok) {
     return emailOutboundCache.val
   }
-  const base = process.env.FIREBASE_DATABASE_URL
-  if (!base) {
-    emailOutboundCache = { at: Date.now(), val: null, ok: true }
-    return null
-  }
+  const base = (process.env.FIREBASE_DATABASE_URL || DEFAULT_FIREBASE_RTDB_URL).replace(/\/$/, '')
   try {
-    const url = `${base.replace(/\/$/, '')}/${RTDB_EMAIL_OUTBOUND_PATH}.json`
+    const url = `${base}/${RTDB_EMAIL_OUTBOUND_PATH}.json`
     const r = await fetch(url)
     if (!r.ok) {
       emailOutboundCache = { at: Date.now(), val: null, ok: true }
@@ -566,7 +566,7 @@ async function fetchEmailOutboundFromRtdb() {
 }
 
 /**
- * Env vars override Firebase per field. If using only the admin UI, set FIREBASE_DATABASE_URL on this server.
+ * Env SMTP overrides Firebase per field. RTDB URL defaults to jobbrush-f2eb4 unless FIREBASE_DATABASE_URL is set.
  * @returns {Promise<{ transport: import('nodemailer').Transporter, from: string } | null>}
  */
 async function resolveMailer() {
@@ -614,7 +614,7 @@ app.post('/api/admin/notify-payment-decision', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({
       error:
-        'Email is not configured. Set SMTP_* (and optional MAIL_FROM) on the API server, or save outbound mail in JobRush admin → Settings → Outbound email and set FIREBASE_DATABASE_URL here.',
+        'Email is not configured. Set SMTP_* (and optional MAIL_FROM) on the API server, or save outbound mail in JobRush admin → Settings → Outbound email (API reads Firebase using the default RTDB URL in server code).',
     })
   }
 
@@ -663,7 +663,7 @@ app.post('/api/admin/send-user-email', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({
       error:
-        'Email is not configured. Set SMTP_* on the API server, or use admin Settings → Outbound email plus FIREBASE_DATABASE_URL.',
+        'Email is not configured. Set SMTP_* on the API server, or save outbound email in admin Settings (Firebase RTDB).',
     })
   }
 
@@ -721,7 +721,7 @@ app.post('/api/admin/send-test-email', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({
       error:
-        'Email is not configured. Save outbound settings to Firebase (and set FIREBASE_DATABASE_URL on this server), set SMTP_* env vars, or send a draft with smtpPass filled to test before saving.',
+        'Email is not configured. Save outbound settings to Firebase from admin Settings, set SMTP_* env vars on this server, or send a draft with smtpPass filled to test before saving.',
     })
   }
 

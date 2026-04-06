@@ -12,7 +12,7 @@
  *
  * Usage:
  *   Set GOOGLE_APPLICATION_CREDENTIALS env var to your service account JSON path,
- *   or place jobrush-f2eb4-firebase-adminsdk-*.json in project root.
+ *   or place *-firebase-adminsdk-*.json in project root.
  *
  * Optional — push outbound SMTP to adminPortal/emailOutbound (same shape as admin Settings):
  *   Do NOT commit secrets. Set vars only in your shell for one run, then unset.
@@ -43,7 +43,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 // Realtime Database URL (asia-southeast1 region)
-const DATABASE_URL = 'https://jobrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
+const DATABASE_URL = 'https://jobbrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
 
 // =============================================================================
 // COLLECTION STRUCTURE - Add new collections/fields HERE first, then run script
