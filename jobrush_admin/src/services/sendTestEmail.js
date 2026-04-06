@@ -13,14 +13,32 @@ export async function sendTestEmail({ toEmail, draft }) {
       'Missing VITE_ADMIN_API_SECRET. Add it to the admin build environment (must match ADMIN_API_SECRET on the API server).'
     )
   }
-  const res = await fetch(`${apiBase()}/api/admin/send-test-email`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${secret}`,
-    },
-    body: JSON.stringify({ toEmail, draft }),
-  })
+
+  const controller = new AbortController()
+  const timeoutMs = 30000
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  let res
+  try {
+    res = await fetch(`${apiBase()}/api/admin/send-test-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${secret}`,
+      },
+      body: JSON.stringify({ toEmail, draft }),
+      signal: controller.signal,
+    })
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      throw new Error(
+        `Request timed out after ${timeoutMs / 1000}s. Is the API up (${apiBase()})? Redeploy Netlify after setting VITE_ADMIN_API_SECRET.`
+      )
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
   const text = await res.text()
   let body
   try {

@@ -13,6 +13,22 @@ const GMAIL_SMTP_DEFAULTS = {
 
 const PLACEHOLDER_GMAIL_ADDRESS = 'you@gmail.com'
 
+/** Avoid stuck "Saving…" when Firebase never resolves (wrong DB URL, rules, offline). */
+function withTimeout(promise, ms, actionLabel) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(
+          new Error(
+            `${actionLabel} timed out after ${Math.round(ms / 1000)}s. Confirm Netlify has VITE_FIREBASE_DATABASE_URL (exact Realtime Database URL), rules allow the path, and your network is OK.`
+          )
+        )
+      }, ms)
+    }),
+  ])
+}
+
 function emptyGmailOutboundForm() {
   return {
     mailFrom: '',
@@ -127,18 +143,23 @@ export default function SettingsEmail() {
     e.preventDefault()
     setMessage({ type: '', text: '' })
     setSubmitting(true)
-    const result = await changeAdminUsername(currentPassword, newEmail)
-    setSubmitting(false)
-    if (result.ok) {
-      setCurrentPassword('')
-      setCurrentUsername(newEmail.trim())
-      setNewEmail('')
-      setMessage({
-        type: 'ok',
-        text: 'Admin login email (username) updated. Sign in with the new value next time.',
-      })
-    } else {
-      setMessage({ type: 'error', text: result.error || 'Could not update admin email.' })
+    try {
+      const result = await withTimeout(changeAdminUsername(currentPassword, newEmail), 25000, 'Update admin email')
+      if (result.ok) {
+        setCurrentPassword('')
+        setCurrentUsername(newEmail.trim())
+        setNewEmail('')
+        setMessage({
+          type: 'ok',
+          text: 'Admin login email (username) updated. Sign in with the new value next time.',
+        })
+      } else {
+        setMessage({ type: 'error', text: result.error || 'Could not update admin email.' })
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err?.message || 'Could not update admin email.' })
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -146,25 +167,34 @@ export default function SettingsEmail() {
     e.preventDefault()
     setSmtpMessage({ type: '', text: '' })
     setSmtpSubmitting(true)
-    const result = await saveEmailOutbound(smtpAdminPassword, {
-      mailFrom: outbound.mailFrom,
-      smtpHost: outbound.smtpHost,
-      smtpPort: outbound.smtpPort,
-      smtpSecure: outbound.smtpSecure,
-      smtpUser: outbound.smtpUser,
-      smtpPass: smtpPassword,
-    })
-    setSmtpSubmitting(false)
-    if (result.ok) {
-      setSmtpAdminPassword('')
-      setSmtpPassword('')
-      setOutbound((o) => ({ ...o, hasPass: true }))
-      setSmtpMessage({
-        type: 'ok',
-        text: 'Saved to Firebase (adminPortal/emailOutbound). Set FIREBASE_DATABASE_URL on your API host so the server can read it, then approve a payment to test.',
-      })
-    } else {
-      setSmtpMessage({ type: 'error', text: result.error || 'Could not save email settings.' })
+    try {
+      const result = await withTimeout(
+        saveEmailOutbound(smtpAdminPassword, {
+          mailFrom: outbound.mailFrom,
+          smtpHost: outbound.smtpHost,
+          smtpPort: outbound.smtpPort,
+          smtpSecure: outbound.smtpSecure,
+          smtpUser: outbound.smtpUser,
+          smtpPass: smtpPassword,
+        }),
+        25000,
+        'Save outbound email'
+      )
+      if (result.ok) {
+        setSmtpAdminPassword('')
+        setSmtpPassword('')
+        setOutbound((o) => ({ ...o, hasPass: true }))
+        setSmtpMessage({
+          type: 'ok',
+          text: 'Saved to Firebase (adminPortal/emailOutbound). Set FIREBASE_DATABASE_URL on your API host so the server can read it, then approve a payment to test.',
+        })
+      } else {
+        setSmtpMessage({ type: 'error', text: result.error || 'Could not save email settings.' })
+      }
+    } catch (err) {
+      setSmtpMessage({ type: 'error', text: err?.message || 'Could not save email settings.' })
+    } finally {
+      setSmtpSubmitting(false)
     }
   }
 
