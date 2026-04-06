@@ -1,3 +1,5 @@
+import { getEmailOutboundDraftForApi } from './adminDb'
+
 const apiBase = () => String(import.meta.env.VITE_JOBRUSH_API_BASE || 'https://jobrush.onrender.com').replace(/\/$/, '')
 
 /**
@@ -10,13 +12,19 @@ export async function sendAdminUserEmail({ toEmail, subject, text }) {
       'Missing VITE_ADMIN_API_SECRET. Add it to the admin build environment (must match ADMIN_API_SECRET on the API server).'
     )
   }
+  const outbound = await getEmailOutboundDraftForApi()
   const res = await fetch(`${apiBase()}/api/admin/send-user-email`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${secret}`,
     },
-    body: JSON.stringify({ toEmail, subject, text }),
+    body: JSON.stringify({
+      toEmail,
+      subject,
+      text,
+      ...(outbound ? { outbound } : {}),
+    }),
   })
   const raw = await res.text()
   let body

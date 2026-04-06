@@ -1,3 +1,5 @@
+import { getEmailOutboundDraftForApi } from './adminDb'
+
 const apiBase = () => String(import.meta.env.VITE_JOBRUSH_API_BASE || 'https://jobrush.onrender.com').replace(/\/$/, '')
 
 /**
@@ -10,6 +12,7 @@ export async function sendPaymentDecisionEmail({ toEmail, decision, paymentRefer
       'Missing VITE_ADMIN_API_SECRET. Add it to the admin build environment (must match ADMIN_API_SECRET on the API server).'
     )
   }
+  const outbound = await getEmailOutboundDraftForApi()
   const res = await fetch(`${apiBase()}/api/admin/notify-payment-decision`, {
     method: 'POST',
     headers: {
@@ -21,6 +24,7 @@ export async function sendPaymentDecisionEmail({ toEmail, decision, paymentRefer
       decision,
       paymentReference: paymentReference || '',
       userLabel: userLabel || '',
+      ...(outbound ? { outbound } : {}),
     }),
   })
   const text = await res.text()

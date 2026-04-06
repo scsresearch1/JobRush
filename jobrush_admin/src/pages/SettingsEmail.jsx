@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { EnvelopeIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
-import { getAdminCredentials, getEmailOutboundSettings } from '../services/adminDb'
+import { getAdminCredentials, getEmailOutboundSettings, getEmailOutboundDraftForApi } from '../services/adminDb'
 import { sendTestEmail } from '../services/sendTestEmail'
 
 /** Standard Gmail / Google SMTP (app password flow). Addresses are yours — not preset. */
@@ -116,7 +116,7 @@ export default function SettingsEmail() {
     setTestMsg({ type: '', text: '' })
     try {
       const passTrim = smtpPassword.replace(/\s+/g, '').trim()
-      const draft =
+      let draft =
         passTrim &&
         outbound.mailFrom.trim() &&
         outbound.smtpHost.trim() &&
@@ -130,6 +130,9 @@ export default function SettingsEmail() {
               smtpPass: passTrim,
             }
           : undefined
+      if (!draft) {
+        draft = (await getEmailOutboundDraftForApi()) ?? undefined
+      }
       await sendTestEmail({ toEmail: to, draft })
       setTestMsg({ type: 'ok', text: `Test email sent to ${to}. Check inbox and spam.` })
     } catch (e) {

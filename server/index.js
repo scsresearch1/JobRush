@@ -550,8 +550,19 @@ async function fetchEmailOutboundFromRtdb() {
   const base = (process.env.FIREBASE_DATABASE_URL || DEFAULT_FIREBASE_RTDB_URL).replace(/\/$/, '')
   try {
     const url = `${base}/${RTDB_EMAIL_OUTBOUND_PATH}.json`
-    const r = await fetch(url)
+    const r = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'JobRush-API/1.0',
+      },
+    })
     if (!r.ok) {
+      const errBody = await r.text().catch(() => '')
+      console.warn(
+        'fetchEmailOutboundFromRtdb HTTP',
+        r.status,
+        errBody ? errBody.slice(0, 300) : '(no body)'
+      )
       emailOutboundCache = { at: Date.now(), val: null, ok: true }
       return null
     }
@@ -563,6 +574,14 @@ async function fetchEmailOutboundFromRtdb() {
     emailOutboundCache = { at: Date.now(), val: null, ok: true }
     return null
   }
+}
+
+/**
+ * Prefer SMTP supplied by the admin app (read from RTDB in the browser, sent over HTTPS with the admin secret).
+ */
+function mailerFromBodyOutbound(body) {
+  const o = body?.outbound
+  return o && typeof o === 'object' ? buildMailerFromDraft(o) : null
 }
 
 /**
@@ -610,11 +629,12 @@ app.post('/api/admin/notify-payment-decision', async (req, res) => {
     return res.status(400).json({ error: 'decision must be approved or rejected' })
   }
 
-  const mailer = await resolveMailer()
+  let mailer = mailerFromBodyOutbound(req.body)
+  if (!mailer) mailer = await resolveMailer()
   if (!mailer) {
     return res.status(503).json({
       error:
-        'Email is not configured. Set SMTP_* (and optional MAIL_FROM) on the API server, or save outbound mail in JobRush admin → Settings → Outbound email (API reads Firebase using the default RTDB URL in server code).',
+        'Email is not configured. Save outbound SMTP in JobRush admin → Settings (Firebase), set SMTP_* on the API server, or ensure the admin app is redeployed so it can send saved settings with this request.',
     })
   }
 
@@ -659,11 +679,12 @@ app.post('/api/admin/send-user-email', async (req, res) => {
     return res.status(400).json({ error: 'subject and text are required' })
   }
 
-  const mailer = await resolveMailer()
+  let mailer = mailerFromBodyOutbound(req.body)
+  if (!mailer) mailer = await resolveMailer()
   if (!mailer) {
     return res.status(503).json({
       error:
-        'Email is not configured. Set SMTP_* on the API server, or save outbound email in admin Settings (Firebase RTDB).',
+        'Email is not configured. Save outbound SMTP in admin Settings (Firebase), set SMTP_* on the API server, or redeploy the admin app so it attaches saved settings to this request.',
     })
   }
 
@@ -713,7 +734,7 @@ app.post('/api/admin/send-test-email', async (req, res) => {
     return res.status(400).json({ error: 'Valid toEmail is required' })
   }
 
-  let mailer = buildMailerFromDraft(req.body?.draft)
+  let mailer = buildMailerFromDraft(req.body?.draft || req.body?.outbound)
   if (!mailer) {
     emailOutboundCache = { at: 0, val: null, ok: false }
     mailer = await resolveMailer()
@@ -721,7 +742,7 @@ app.post('/api/admin/send-test-email', async (req, res) => {
   if (!mailer) {
     return res.status(503).json({
       error:
-        'Email is not configured. Save outbound settings to Firebase from admin Settings, set SMTP_* env vars on this server, or send a draft with smtpPass filled to test before saving.',
+        'Email is not configured. Save outbound SMTP in admin Settings (Firebase), or set SMTP_* on this server. After saving, use Send test without retyping the app password — the admin app sends settings with the request.',
     })
   }
 

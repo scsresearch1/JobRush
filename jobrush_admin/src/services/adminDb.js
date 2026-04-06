@@ -123,6 +123,32 @@ export async function getEmailOutboundSettings() {
 }
 
 /**
+ * Full SMTP payload for the JobRush API (HTTPS + ADMIN_API_SECRET). Avoids relying on the server
+ * to read RTDB over anonymous HTTP (Render + rules edge cases).
+ * @returns {Promise<{ mailFrom: string, smtpHost: string, smtpPort: number, smtpSecure: boolean, smtpUser: string, smtpPass: string } | null>}
+ */
+export async function getEmailOutboundDraftForApi() {
+  const snapshot = await get(emailOutboundRef())
+  if (!snapshot.exists()) return null
+  const v = snapshot.val()
+  const pass = String(v?.[EMAIL_OUTBOUND_FIELDS.SMTP_PASS] ?? '')
+    .replace(/\s+/g, '')
+    .trim()
+  const host = String(v?.[EMAIL_OUTBOUND_FIELDS.SMTP_HOST] ?? '').trim()
+  const user = String(v?.[EMAIL_OUTBOUND_FIELDS.SMTP_USER] ?? '').trim()
+  if (!host || !user || !pass) return null
+  const mailFrom = String(v?.[EMAIL_OUTBOUND_FIELDS.MAIL_FROM] ?? '').trim() || user
+  return {
+    mailFrom,
+    smtpHost: host,
+    smtpPort: Number(v?.[EMAIL_OUTBOUND_FIELDS.SMTP_PORT]) || 587,
+    smtpSecure: v?.[EMAIL_OUTBOUND_FIELDS.SMTP_SECURE] === true,
+    smtpUser: user,
+    smtpPass: pass,
+  }
+}
+
+/**
  * @param {{ mailFrom: string, smtpHost: string, smtpPort: number, smtpSecure: boolean, smtpUser: string, smtpPass?: string }} fields — omit or leave smtpPass empty to keep the saved app password
  */
 export async function setEmailOutboundSettings(fields) {
