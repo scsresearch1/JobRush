@@ -90,7 +90,7 @@ export function AuthProvider({ children }) {
     const cur = String(currentPassword || '')
     const next = String(newUsername || '').trim()
     if (!cur || !next) {
-      return { ok: false, error: 'Enter your current password and the new admin email or username.' }
+      return { ok: false, error: 'Enter your current password and the new username.' }
     }
     try {
       const creds = await getAdminCredentials()

@@ -23,7 +23,8 @@
     "dev:full": "concurrently \"npm run server\" \"npm run dev -w jobrush_client\"",
     "admin:dev": "npm run dev -w jobrush_admin",
     "admin:build": "npm run build -w jobrush_admin",
-    "firebase:create-collections": "node scripts/create-firebase-collections.js"
+    "firebase:create-collections": "node scripts/create-firebase-collections.js",
+    "simulate:test-email": "node server/scripts/simulate-test-email.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

@@ -117,7 +117,7 @@ export default function Layout() {
                 </NavLink>
                 <NavLink to="/settings/email" className={subNavClass} onClick={() => setMobileOpen(false)}>
                   <EnvelopeIcon className="w-4 h-4 shrink-0 opacity-80" />
-                  Change admin email
+                  Email & sign-in
                 </NavLink>
               </div>
             )}

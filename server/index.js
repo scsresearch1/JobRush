@@ -9,18 +9,7 @@ import express from 'express'
 import cors from 'cors'
 import Groq from 'groq-sdk'
 import nodemailer from 'nodemailer'
-
-/** Avoid hanging forever on blocked outbound SMTP (Render ↔ Gmail). */
-const SMTP_SOCKET_MS = 25_000
-
-function createSmtpTransport(opts) {
-  return nodemailer.createTransport({
-    ...opts,
-    connectionTimeout: SMTP_SOCKET_MS,
-    greetingTimeout: SMTP_SOCKET_MS,
-    socketTimeout: SMTP_SOCKET_MS,
-  })
-}
+import { createSmtpTransport, buildMailerFromDraft } from './lib/smtpMailer.js'
 
 /** Same RTDB as client/admin (jobrush_client/src/config/firebaseJobbrushDefaults.js). Override with FIREBASE_DATABASE_URL if needed. */
 const DEFAULT_FIREBASE_RTDB_URL =
@@ -711,23 +700,6 @@ app.post('/api/admin/send-user-email', async (req, res) => {
     res.status(500).json({ error: e.message || 'Failed to send email' })
   }
 })
-
-/**
- * Build transporter from admin "draft" form (optional test-before-save).
- */
-function buildMailerFromDraft(d) {
-  if (!d || typeof d !== 'object') return null
-  const host = String(d.smtpHost || '').trim()
-  const user = String(d.smtpUser || '').trim()
-  const pass = String(d.smtpPass || '').replace(/\s+/g, '').trim()
-  if (!host || !user || !pass) return null
-  if (pass.length > 256) return null
-  const port = Number(d.smtpPort) || 587
-  const secure = d.smtpSecure === true
-  const from = String(d.mailFrom || '').trim() || user
-  const transport = createSmtpTransport({ host, port, secure, auth: { user, pass } })
-  return { transport, from }
-}
 
 /**
  * POST /api/admin/send-test-email

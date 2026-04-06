@@ -147,20 +147,20 @@ export default function SettingsEmail() {
     setMessage({ type: '', text: '' })
     setSubmitting(true)
     try {
-      const result = await withTimeout(changeAdminUsername(currentPassword, newEmail), 25000, 'Update admin email')
+      const result = await withTimeout(changeAdminUsername(currentPassword, newEmail), 25000, 'Update admin login')
       if (result.ok) {
         setCurrentPassword('')
         setCurrentUsername(newEmail.trim())
         setNewEmail('')
         setMessage({
           type: 'ok',
-          text: 'Admin login email (username) updated. Sign in with the new value next time.',
+          text: 'Admin login updated. Use the new username next time you sign in.',
         })
       } else {
-        setMessage({ type: 'error', text: result.error || 'Could not update admin email.' })
+        setMessage({ type: 'error', text: result.error || 'Could not update admin login.' })
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err?.message || 'Could not update admin email.' })
+      setMessage({ type: 'error', text: err?.message || 'Could not update admin login.' })
     } finally {
       setSubmitting(false)
     }
@@ -189,7 +189,7 @@ export default function SettingsEmail() {
         setOutbound((o) => ({ ...o, hasPass: true }))
         setSmtpMessage({
           type: 'ok',
-          text: 'Saved to Firebase (adminPortal/emailOutbound). The API uses the same DB URL as the code by default — redeploy Render if needed, then test email or approve payment.',
+          text: 'Outbound email settings saved.',
         })
       } else {
         setSmtpMessage({ type: 'error', text: result.error || 'Could not save email settings.' })
@@ -204,13 +204,8 @@ export default function SettingsEmail() {
   return (
     <div className="max-w-2xl space-y-10">
       <div>
-        <h1 className="text-2xl font-bold text-white mb-2">Change admin email</h1>
-        <p className="text-admin-300 text-sm mb-8">
-          The first card updates the <strong className="text-admin-200">admin login</strong> in{' '}
-          <code className="text-admin-400 text-xs">adminPortal/credentials</code>. The second card configures{' '}
-          <strong className="text-admin-200">outbound SMTP</strong> for payment and user emails (stored at{' '}
-          <code className="text-admin-400 text-xs">adminPortal/emailOutbound</code>).
-        </p>
+        <h1 className="text-2xl font-bold text-white mb-2">Settings</h1>
+        <p className="text-admin-300 text-sm mb-8">Change your admin sign-in or outbound mail (SMTP).</p>
 
         <div className="bg-admin-900/80 border border-admin-800 rounded-2xl p-6">
           <div className="flex items-center gap-3 mb-6">
@@ -218,8 +213,8 @@ export default function SettingsEmail() {
               <EnvelopeIcon className="w-6 h-6 text-admin-300" />
             </div>
             <div>
-              <h2 className="font-semibold text-white">Admin login email</h2>
-              <p className="text-xs text-admin-400">Current: {currentUsername || '—'}</p>
+              <h2 className="font-semibold text-white">Admin sign-in</h2>
+              <p className="text-xs text-admin-400">Username: {currentUsername || '—'}</p>
             </div>
           </div>
 
@@ -235,12 +230,12 @@ export default function SettingsEmail() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-admin-200 mb-1.5">New admin email / username</label>
+              <label className="block text-sm font-medium text-admin-200 mb-1.5">New username</label>
               <input
                 type="text"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="e.g. admin@yourcompany.com"
+                placeholder="e.g. you@gmail.com or jadm"
                 className="w-full px-4 py-2.5 rounded-xl bg-admin-950 border border-admin-600 text-white focus:ring-2 focus:ring-admin-500 focus:border-transparent placeholder:text-admin-600"
                 autoComplete="username"
               />
@@ -260,7 +255,7 @@ export default function SettingsEmail() {
               disabled={submitting || !currentPassword || !newEmail.trim()}
               className="w-full py-3 rounded-xl bg-admin-600 hover:bg-admin-500 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {submitting ? 'Saving…' : 'Update admin login email'}
+              {submitting ? 'Saving…' : 'Update username'}
             </button>
           </form>
         </div>
@@ -285,49 +280,9 @@ export default function SettingsEmail() {
         </div>
 
         <p className="text-xs text-admin-500 mb-4 leading-relaxed">
-          <strong className="text-admin-400">Gmail defaults (pre-filled):</strong> host{' '}
-          <code className="text-admin-500">smtp.gmail.com</code>, port <code className="text-admin-500">587</code>,{' '}
-          <strong className="text-admin-400">SMTP secure off</strong> (STARTTLS). Use the same Gmail address for Mail
-          From and SMTP username; use a 16-character <em>app password</em>, not your normal password.
+          For Gmail: use an <strong className="text-admin-400">app password</strong> (Google Account → Security → App
+          passwords), not your normal password. Defaults below match Gmail on port 587.
         </p>
-
-        <details className="mb-6 rounded-xl border border-admin-700 bg-admin-950/50 px-4 py-3 text-sm text-admin-300 open:pb-4">
-          <summary className="cursor-pointer font-medium text-admin-200 select-none">
-            Step-by-step: Google app password
-          </summary>
-          <ol className="mt-3 list-decimal list-inside space-y-2 text-admin-400 leading-relaxed">
-            <li>Open the Google account for the mailbox you send from.</li>
-            <li>
-              Turn on <strong className="text-admin-300">2-Step Verification</strong> (Google Account → Security).
-            </li>
-            <li>
-              Go to <strong className="text-admin-300">Security → App passwords</strong> (search “App passwords” if you
-              do not see it).
-            </li>
-            <li>
-              Create an app password for <strong className="text-admin-300">Mail</strong> / “Other” named{' '}
-              <strong className="text-admin-300">JobRush</strong>. Google shows a <strong>16-character</strong> password
-              — paste it below as <strong className="text-admin-300">SMTP app password</strong> (not your normal Gmail
-              password).
-            </li>
-            <li>
-              Use <code className="text-admin-500">smtp.gmail.com</code>, port{' '}
-              <code className="text-admin-500">587</code>, leave “SMTP secure” off (STARTTLS on 587). Match the form
-              defaults below.
-            </li>
-            <li>
-              The API server reads this from Firebase using the database URL in code (
-              <code className="text-admin-500 text-xs">server/index.js</code> /{' '}
-              <code className="text-admin-500 text-xs">firebaseJobbrushDefaults.js</code>). Optional env{' '}
-              <code className="text-admin-500">FIREBASE_DATABASE_URL</code> overrides that. Redeploy the API after
-              changing SMTP here if mail still fails.
-            </li>
-            <li>
-              Optionally keep <code className="text-admin-500">SMTP_*</code> in server env instead — those values override
-              Firebase per field when set.
-            </li>
-          </ol>
-        </details>
 
         <form onSubmit={handleSmtpSubmit} className="space-y-4">
           <div>
@@ -414,20 +369,16 @@ export default function SettingsEmail() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-admin-200 mb-1.5">Your admin portal password (to confirm)</label>
+            <label className="block text-sm font-medium text-admin-200 mb-1.5">Password</label>
             <input
               type="password"
               value={smtpAdminPassword}
               onChange={(e) => setSmtpAdminPassword(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-admin-950 border border-admin-600 text-white focus:ring-2 focus:ring-admin-500 focus:border-transparent"
+              placeholder="Your admin sign-in password"
+              className="w-full px-4 py-2.5 rounded-xl bg-admin-950 border border-admin-600 text-white focus:ring-2 focus:ring-admin-500 focus:border-transparent placeholder:text-admin-600"
               autoComplete="current-password"
             />
           </div>
-
-          <p className="text-xs text-admin-500 leading-relaxed">
-            Stored in Realtime Database like admin credentials. Anyone who can read your DB rules can see this data —
-            tighten rules or use server-only env vars if you need stricter security.
-          </p>
 
           {smtpMessage.text && (
             <p
@@ -457,11 +408,8 @@ export default function SettingsEmail() {
         <div className="mt-8 pt-8 border-t border-admin-800">
           <h3 className="text-sm font-semibold text-white mb-1">Send test email</h3>
           <p className="text-xs text-admin-500 mb-4 leading-relaxed">
-            Calls the JobRush API (same <code className="text-admin-500 text-[11px]">VITE_ADMIN_API_SECRET</code> as
-            payment emails). If the <strong className="text-admin-400">SMTP app password</strong> field above is filled,
-            the test uses your <strong className="text-admin-400">current form values</strong> even before you save. If
-            it is empty, the API uses settings already in Firebase or server env — save first when you only changed the
-            form.
+            Sends through the JobRush API using saved SMTP settings (or the app password field above if you just typed
+            it and have not saved yet).
           </p>
           <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
             <div className="flex-1 min-w-0">
