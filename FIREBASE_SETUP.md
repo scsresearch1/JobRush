@@ -27,7 +27,7 @@ VITE_FIREBASE_APP_ID=your-actual-app-id
 
 Replace `your-actual-api-key` and `your-actual-app-id` with values from the Firebase Console.
 
-The Realtime Database URL is **not** an env var: edit `jobrush_client/src/config/realtimeDatabaseUrl.js` (and keep `jobrush_admin` / `server` copies in sync) if you change Firebase projects.
+Project id, auth domain, and Realtime Database URL are **not** env vars: edit `jobrush_client/src/config/firebaseJobbrushDefaults.js` (plus admin copy and `server/index.js`) if you change Firebase projects.
 
 ### 3. Set Realtime Database Rules
 

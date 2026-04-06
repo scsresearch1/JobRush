@@ -103,4 +103,4 @@ export const ATS_REPORT_FIELDS = {
 // DATABASE URL (for reference - actual URL is in firebase.js config)
 // =============================================================================
 
-export { REALTIME_DATABASE_URL as DATABASE_URL } from './realtimeDatabaseUrl.js'
+export { JOBBRUSH_REALTIME_DATABASE_URL as DATABASE_URL } from './firebaseJobbrushDefaults.js'

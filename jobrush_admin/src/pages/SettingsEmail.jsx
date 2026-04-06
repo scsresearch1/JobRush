@@ -21,7 +21,7 @@ function withTimeout(promise, ms, actionLabel) {
       setTimeout(() => {
         reject(
           new Error(
-            `${actionLabel} timed out after ${Math.round(ms / 1000)}s. Check Firebase RTDB rules, realtimeDatabaseUrl.js matches your project, and your network is OK.`
+            `${actionLabel} timed out after ${Math.round(ms / 1000)}s. Check Firebase RTDB rules, firebaseJobbrushDefaults.js matches your project, and your network is OK.`
           )
         )
       }, ms)
@@ -315,7 +315,7 @@ export default function SettingsEmail() {
             <li>
               The API server reads this from Firebase using the database URL in code (
               <code className="text-admin-500 text-xs">server/index.js</code> /{' '}
-              <code className="text-admin-500 text-xs">realtimeDatabaseUrl.js</code>). Optional env{' '}
+              <code className="text-admin-500 text-xs">firebaseJobbrushDefaults.js</code>). Optional env{' '}
               <code className="text-admin-500">FIREBASE_DATABASE_URL</code> overrides that. Redeploy the API after
               changing SMTP here if mail still fails.
             </li>

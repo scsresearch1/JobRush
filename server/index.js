@@ -10,7 +10,7 @@ import cors from 'cors'
 import Groq from 'groq-sdk'
 import nodemailer from 'nodemailer'
 
-/** Same RTDB as client/admin (jobrush_client/src/config/realtimeDatabaseUrl.js). Override with FIREBASE_DATABASE_URL if needed. */
+/** Same RTDB as client/admin (jobrush_client/src/config/firebaseJobbrushDefaults.js). Override with FIREBASE_DATABASE_URL if needed. */
 const DEFAULT_FIREBASE_RTDB_URL =
   'https://jobbrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
 
