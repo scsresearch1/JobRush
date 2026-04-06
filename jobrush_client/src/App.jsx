@@ -16,7 +16,7 @@ import CareersComingSoonPage from './pages/CareersComingSoonPage'
 import PrivacyPage from './pages/PrivacyPage'
 import TransitionPage from './components/TransitionPage'
 import EmailCaptureModal from './components/EmailCaptureModal'
-import LoadTestPage from '../TestingEngine/LoadTestPage.jsx'
+import LoadTestPage from '@jobrush/testing-engine/LoadTestPage.jsx'
 
 function ProtectedRoute({ children }) {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')

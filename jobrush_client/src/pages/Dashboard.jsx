@@ -8,6 +8,7 @@ import {
   DocumentTextIcon,
   ArrowRightIcon,
 } from '@heroicons/react/24/outline'
+import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
 
 const Dashboard = () => {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
@@ -24,7 +25,7 @@ const Dashboard = () => {
       to: '/ats-analysis',
       icon: ChartBarIcon,
       title: 'ATS Compatibility Score',
-      description: 'Evaluate your resume against 20 companies and 10 universities. Get detailed analysis.',
+      description: `Evaluate your resume against ${MASS_HIRING_PROFILES.length} mass hiring companies and 10 universities. Get detailed analysis.`,
       color: 'from-indigo-500 to-purple-500',
     },
     {

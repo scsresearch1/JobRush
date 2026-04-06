@@ -1,8 +1,14 @@
 {
   "name": "jobrush",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
-  "description": "JobRush.ai - Your Career Acceleration Platform",
+  "description": "JobRush.ai monorepo — client, admin, API",
+  "workspaces": [
+    "jobrush_client",
+    "jobrush_admin",
+    "TestingEngine"
+  ],
   "overrides": {
     "@tootallnate/once": "^3.0.1",
     "dompurify": "^3.2.4",
@@ -10,37 +16,16 @@
     "esbuild": "^0.25.0"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && npm run admin:build && node scripts/copy-jadm-to-dist.js",
-    "preview": "vite preview",
+    "dev": "npm run dev -w jobrush_client",
+    "build": "npm run build -w jobrush_client && npm run build -w jobrush_admin && node scripts/copy-jadm-to-dist.js",
+    "preview": "npm run preview -w jobrush_client",
     "server": "node server/index.js",
-    "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
-    "admin:dev": "npm run dev --prefix jadm",
-    "admin:build": "npm run build --prefix jadm",
+    "dev:full": "concurrently \"npm run server\" \"npm run dev -w jobrush_client\"",
+    "admin:dev": "npm run dev -w jobrush_admin",
+    "admin:build": "npm run build -w jobrush_admin",
     "firebase:create-collections": "node scripts/create-firebase-collections.js"
   },
-  "dependencies": {
-    "@tensorflow/tfjs": "^4.22.0",
-    "@heroicons/react": "^2.1.1",
-    "face-api.js": "^0.22.2",
-    "@prolaxu/open-resume-pdf-parser": "^0.1.2",
-    "firebase": "^11.0.0",
-    "firebase-admin": "^13.7.0",
-    "jspdf": "^2.5.2",
-    "mammoth": "^1.11.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^7.13.1",
-    "recharts": "^2.15.4"
-  },
   "devDependencies": {
-    "@types/react": "^18.2.43",
-    "@types/react-dom": "^18.2.17",
-    "@vitejs/plugin-react": "^4.2.1",
-    "autoprefixer": "^10.4.16",
-    "concurrently": "^9.2.1",
-    "postcss": "^8.4.32",
-    "tailwindcss": "^3.3.6",
-    "vite": "^5.0.8"
+    "concurrently": "^9.2.1"
   }
 }

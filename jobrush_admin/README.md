@@ -1,4 +1,4 @@
-# JobRush Admin Portal (`jadm`)
+# JobRush Admin Portal (`jobrush_admin`)
 
 Standalone React + Vite app for managing **Firebase Realtime Database** data used by JobRush.ai.
 
@@ -12,9 +12,16 @@ Standalone React + Vite app for managing **Firebase Realtime Database** data use
 
 ## Setup
 
+From the **repository root** (installs all workspaces):
+
 ```bash
-cd jadm
 npm install
+```
+
+Then from `jobrush_admin/` (or use `npm run admin:dev` from the repo root):
+
+```bash
+cd jobrush_admin
 cp .env.example .env.local
 # Fill VITE_FIREBASE_* from Firebase Console (same as main app)
 npm run dev
@@ -28,7 +35,7 @@ npm run firebase:create-collections
 
 Local dev: **http://localhost:5174/jadm/** (base path is `/jadm`).
 
-Production (same Netlify site as JobRush): **https://jbrush.netlify.app/jadm/** — the root `npm run build` copies `jadm/dist` into `dist/jadm`; see repo `netlify.toml` redirects.
+Production (same Netlify site as JobRush): **https://jbrush.netlify.app/jadm/** — the root `npm run build` copies `jobrush_admin/dist` into `dist/jadm`; see repo `netlify.toml` redirects.
 
 ## Build & deploy
 

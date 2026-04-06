@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { XMarkIcon, AcademicCapIcon, ChartBarIcon, BriefcaseIcon, UserGroupIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
 
 const DemoModal = ({ isOpen, onClose }) => {
   const [currentStep, setCurrentStep] = useState(0)
@@ -11,11 +12,11 @@ const DemoModal = ({ isOpen, onClose }) => {
     {
       title: "Resume Upload & ATS Scoring",
       icon: <AcademicCapIcon className="w-16 h-16" />,
-      description: "Upload your CV and get compatibility scores across 20 companies and 10 universities",
+      description: `Upload your CV and get compatibility scores across ${MASS_HIRING_PROFILES.length} mass hiring companies and 10 universities`,
       features: [
         "Automatic resume parsing",
         "Skills, experience & education extraction",
-        "30+ ATS target evaluation",
+        `${MASS_HIRING_PROFILES.length} ATS mass-hiring targets (IT + Mech / Civil / ECE / EEE)`,
         "Detailed compatibility reports"
       ],
       color: "from-blue-500 to-cyan-500"

@@ -18,7 +18,7 @@ export const COLLECTIONS = {
   ADMIN_PORTAL: 'adminPortal',
 }
 
-/** Single document at adminPortal/credentials — used by jadm login */
+/** Single document at adminPortal/credentials — used by admin portal login */
 export const ADMIN_PORTAL_FIELDS = {
   USERNAME: 'username',
   PASSWORD: 'password',

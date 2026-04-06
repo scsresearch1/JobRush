@@ -1,0 +1,16 @@
+{
+  "name": "@jobrush/testing-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Load testing UI — separate from client and admin apps",
+  "exports": {
+    "./LoadTestPage.jsx": "./LoadTestPage.jsx"
+  },
+  "peerDependencies": {
+    "@heroicons/react": "^2.1.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^7.13.1"
+  }
+}

@@ -10,7 +10,7 @@
   status = 200
   force = true
 
-# Admin portal (jadm) at /jadm — must be before main SPA catch-all.
+# Admin portal (built from jobrush_admin) at /jadm — must be before main SPA catch-all.
 [[redirects]]
   from = "/jadm"
   to = "/jadm/"

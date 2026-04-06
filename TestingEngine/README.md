@@ -1,5 +1,7 @@
 # TestingEngine
 
+Standalone workspace package at repo root (`TestingEngine/`), separate from `jobrush_client/` and `jobrush_admin/`. The client app depends on `@jobrush/testing-engine` only for the `/load-test` route.
+
 ## Load test page
 
 Open **`/load-test`** (e.g. `https://jbrush.netlify.app/load-test`).

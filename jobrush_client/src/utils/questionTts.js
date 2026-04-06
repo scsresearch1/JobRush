@@ -1,6 +1,6 @@
 /**
  * Text-to-speech for interview questions
- * Uses Web Speech API (browser built-in) — truly free, no API keys
+ * Uses Web Speech API (browser built-in) — no external API keys required
  * Prefers Indian-accent English (en-IN) when available
  *
  * For Indian accent on Windows: Settings → Time & language → Language

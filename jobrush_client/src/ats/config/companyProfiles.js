@@ -11,7 +11,8 @@ export const DEFAULT_WEIGHTS = {
   formatting: 0.10,
 }
 
-// 20 Mass Hiring Companies - Fresher roles
+// Mass hiring companies — IT services, consulting, product, and core engineering (Mech / Civil / ECE / EEE) fresher roles
+// Core-engineering picks skew toward names that commonly recruit at tier-2 Indian campus drives (PSUs, Tata group, Samsung, etc.)
 export const MASS_HIRING_PROFILES = [
   { entity: 'TCS', type: 'company', role: 'Fresher Software Engineer', mandatory_skills: ['Data Structures', 'Algorithms', 'Java', 'SQL'], preferred_skills: ['Python', 'JavaScript', 'Agile'], education: ['B.Tech', 'B.E.', 'M.Tech', 'BCA', 'MCA'], weights: { ...DEFAULT_WEIGHTS } },
   { entity: 'Infosys', type: 'company', role: 'Systems Engineer', mandatory_skills: ['Data Structures', 'Algorithms', 'Java', 'SQL'], preferred_skills: ['Python', 'Agile', 'Git'], education: ['B.Tech', 'B.E.', 'BCA', 'MCA'], weights: { ...DEFAULT_WEIGHTS } },
@@ -22,6 +23,7 @@ export const MASS_HIRING_PROFILES = [
   { entity: 'HCL Tech', type: 'company', role: 'Graduate Engineer', mandatory_skills: ['Data Structures', 'Algorithms', 'Java', 'SQL'], preferred_skills: ['Python', 'JavaScript'], education: ['B.Tech', 'B.E.', 'BCA', 'MCA'], weights: { ...DEFAULT_WEIGHTS } },
   { entity: 'Tech Mahindra', type: 'company', role: 'Software Engineer', mandatory_skills: ['Data Structures', 'Algorithms', 'Java', 'SQL'], preferred_skills: ['Python', 'Agile'], education: ['B.Tech', 'B.E.', 'BCA', 'MCA'], weights: { ...DEFAULT_WEIGHTS } },
   { entity: 'L&T Infotech', type: 'company', role: 'Graduate Engineer Trainee', mandatory_skills: ['Data Structures', 'Algorithms', 'Java', 'SQL'], preferred_skills: ['Python', 'Agile'], education: ['B.Tech', 'B.E.'], weights: { ...DEFAULT_WEIGHTS } },
+  { entity: 'LTI Mindtree', type: 'company', role: 'Software Engineer Trainee', mandatory_skills: ['Data Structures', 'Algorithms', 'Java', 'SQL'], preferred_skills: ['Python', 'JavaScript', 'Agile'], education: ['B.Tech', 'B.E.', 'M.Tech', 'BCA', 'MCA'], weights: { ...DEFAULT_WEIGHTS } },
   { entity: 'Deloitte', type: 'company', role: 'Analyst', mandatory_skills: ['SQL', 'Excel', 'Data Structures'], preferred_skills: ['Python', 'Agile', 'Communication'], education: ['B.Tech', 'B.E.', 'B.Com', 'BCA', 'MCA'], weights: { ...DEFAULT_WEIGHTS } },
   { entity: 'EY', type: 'company', role: 'Staff Consultant', mandatory_skills: ['SQL', 'Data Structures'], preferred_skills: ['Python', 'Agile', 'Excel'], education: ['B.Tech', 'B.E.', 'BCA', 'MCA'], weights: { ...DEFAULT_WEIGHTS } },
   { entity: 'KPMG', type: 'company', role: 'Associate', mandatory_skills: ['SQL', 'Data Structures'], preferred_skills: ['Python', 'Excel', 'Agile'], education: ['B.Tech', 'B.E.', 'BCA', 'MCA'], weights: { ...DEFAULT_WEIGHTS } },
@@ -33,6 +35,18 @@ export const MASS_HIRING_PROFILES = [
   { entity: 'NVIDIA', type: 'company', role: 'Software Intern', mandatory_skills: ['Data Structures', 'Algorithms', 'C++', 'Python'], preferred_skills: ['Machine Learning', 'CUDA', 'Git'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
   { entity: 'Qualcomm', type: 'company', role: 'Engineer', mandatory_skills: ['Data Structures', 'Algorithms', 'C++', 'Python'], preferred_skills: ['Embedded', 'Linux', 'Git'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
   { entity: 'Adobe', type: 'company', role: 'Computer Scientist', mandatory_skills: ['Data Structures', 'Algorithms', 'Java', 'JavaScript'], preferred_skills: ['React', 'Python', 'Git'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
+  // Mechanical engineering — mass / campus hiring
+  { entity: 'Tata Motors', type: 'company', role: 'Graduate Engineer Trainee (Mechanical)', mandatory_skills: ['Thermodynamics', 'Mechanical Design', 'CAD', 'Manufacturing Processes', 'Solid Mechanics'], preferred_skills: ['AutoCAD', 'SolidWorks', 'MATLAB', 'Quality Control', 'CATIA'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
+  { entity: 'Bosch', type: 'company', role: 'Graduate Engineer (Mechanical Systems)', mandatory_skills: ['Thermodynamics', 'Fluid Mechanics', 'Machine Design', 'CAD', 'Manufacturing'], preferred_skills: ['MATLAB', 'PLC', 'Automotive Systems', 'Lean Manufacturing', 'Six Sigma'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
+  // Civil engineering
+  { entity: 'Larsen & Toubro', type: 'company', role: 'Graduate Engineer Trainee (Civil)', mandatory_skills: ['Structural Analysis', 'Concrete Technology', 'Surveying', 'Construction Management', 'Geotechnical Engineering'], preferred_skills: ['AutoCAD', 'STAAD', 'Project Planning', 'Estimation', 'Building Codes'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
+  { entity: 'Tata Projects', type: 'company', role: 'Graduate Engineer Trainee (Civil)', mandatory_skills: ['Structural Analysis', 'RCC', 'Surveying', 'Construction Management', 'Geotechnical Engineering'], preferred_skills: ['AutoCAD', 'MS Project', 'Estimation', 'Site Execution', 'Highway Engineering'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
+  // Electronics & Communication (ECE) — high visibility at tier-2 drives
+  { entity: 'Samsung', type: 'company', role: 'Graduate Engineer (R&D / Embedded)', mandatory_skills: ['Digital Electronics', 'Embedded Systems', 'C', 'Microprocessors', 'Communication Systems'], preferred_skills: ['C++', 'Python', 'Linux', 'Computer Networks', 'IoT'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
+  { entity: 'Texas Instruments', type: 'company', role: 'Applications Engineer Trainee', mandatory_skills: ['Analog Electronics', 'Digital Design', 'Embedded Systems', 'PCB Design', 'Semiconductor Devices'], preferred_skills: ['C', 'Python', 'MATLAB', 'Signal Processing', 'LabVIEW'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
+  // Electrical (EEE) — PSUs & utilities common on tier-2 placement lists
+  { entity: 'BHEL', type: 'company', role: 'Engineer Trainee (Electrical)', mandatory_skills: ['Power Systems', 'Electrical Machines', 'Power Plant Engineering', 'Control Systems', 'Circuit Analysis'], preferred_skills: ['Switchgear', 'HVDC', 'MATLAB', 'Protection Systems', 'Renewable Energy'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
+  { entity: 'Tata Power', type: 'company', role: 'Management Trainee (Electrical)', mandatory_skills: ['Power Systems', 'Electrical Machines', 'Power Electronics', 'Generation', 'Transmission'], preferred_skills: ['Smart Grid', 'Renewable Energy', 'SCADA', 'MATLAB', 'Distribution Systems'], education: ['B.Tech', 'B.E.', 'M.Tech'], weights: { ...DEFAULT_WEIGHTS } },
 ]
 
 // MAANG Companies

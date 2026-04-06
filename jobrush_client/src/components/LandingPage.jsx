@@ -14,6 +14,7 @@ import {
 import DemoModal from './DemoModal'
 import AnimatedCounter from './AnimatedCounter'
 import { useHelpCenter } from '../context/HelpCenterContext'
+import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
 
 const SparklesIconSVG = () => (
   <svg className="w-7 h-7 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -56,7 +57,7 @@ const LandingPage = ({ onStartJourney }) => {
     {
       icon: <AcademicCapIcon className="w-8 h-8" />,
       title: "Resume Upload & ATS Scoring",
-      description: "Upload your CV, auto-extract skills and experience, and get compatibility scores across 20 companies and 10 universities."
+      description: `Upload your CV, auto-extract skills and experience, and get compatibility scores across ${MASS_HIRING_PROFILES.length} mass hiring companies and 10 universities.`
     },
     {
       icon: <ChartBarIcon className="w-8 h-8" />,
@@ -76,7 +77,7 @@ const LandingPage = ({ onStartJourney }) => {
   ]
 
   const benefits = [
-    "ATS compatibility across 30+ targets",
+    `ATS compatibility across ${MASS_HIRING_PROFILES.length} mass hiring targets`,
     "Scientific resume analysis reports",
     "Video-based mock interviews",
     "Confidence & emotion analysis",
@@ -301,7 +302,7 @@ const LandingPage = ({ onStartJourney }) => {
             Join thousands who have accelerated their careers with JobRush.ai
           </p>
           <button onClick={onStartJourney} className="bg-white text-primary-600 px-10 py-4 rounded-xl text-lg font-semibold hover:bg-gray-100 transition shadow-2xl transform hover:scale-105 flex items-center space-x-2 mx-auto">
-            <span>Get Started Free</span>
+            <span>Get Started</span>
             <ArrowRightIcon className="w-5 h-5" />
           </button>
         </div>

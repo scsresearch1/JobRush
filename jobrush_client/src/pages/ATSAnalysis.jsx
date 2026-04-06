@@ -36,29 +36,12 @@ import {
   ExclamationTriangleIcon,
   LightBulbIcon,
 } from '@heroicons/react/24/outline'
+import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
 
-const MASS_HIRING_COMPANIES = [
-  { company: 'TCS', role: 'Fresher Software Engineer' },
-  { company: 'Infosys', role: 'Systems Engineer' },
-  { company: 'Wipro', role: 'Project Engineer' },
-  { company: 'Cognizant', role: 'Programmer Analyst' },
-  { company: 'Accenture', role: 'Associate Software Engineer' },
-  { company: 'Capgemini', role: 'Consultant' },
-  { company: 'HCL Tech', role: 'Graduate Engineer' },
-  { company: 'Tech Mahindra', role: 'Software Engineer' },
-  { company: 'L&T Infotech', role: 'Graduate Engineer Trainee' },
-  { company: 'Deloitte', role: 'Analyst' },
-  { company: 'EY', role: 'Staff Consultant' },
-  { company: 'KPMG', role: 'Associate' },
-  { company: 'IBM', role: 'Associate Developer' },
-  { company: 'Oracle', role: 'Applications Developer' },
-  { company: 'SAP', role: 'Associate Developer' },
-  { company: 'Cisco', role: 'Software Engineer I' },
-  { company: 'Intel', role: 'Graduate Technical Intern' },
-  { company: 'NVIDIA', role: 'Software Intern' },
-  { company: 'Qualcomm', role: 'Engineer' },
-  { company: 'Adobe', role: 'Computer Scientist' },
-]
+const massHiringCompanyRows = MASS_HIRING_PROFILES.map((p) => ({
+  company: p.entity,
+  role: p.role,
+}))
 
 const MAANG_COMPANIES = [
   { name: 'Meta', fullName: 'Meta (Facebook)' },
@@ -237,17 +220,17 @@ const ATSAnalysis = () => {
           ATS Compatibility Analysis
         </h1>
         <p className="text-base sm:text-lg text-gray-600 max-w-2xl">
-          Your resume evaluated using a deterministic, evidence-based ATS engine across 20 mass hiring companies, MAANG, and Ivy League universities.
+          Your resume evaluated using a deterministic, evidence-based ATS engine across {MASS_HIRING_PROFILES.length} mass hiring companies, MAANG, and Ivy League universities.
         </p>
       </div>
 
       <div className="space-y-8">
-        {/* Section 1: 20 Company Fresher Level Job Roles */}
+        {/* Section 1: Mass hiring — fresher-level job roles */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
           <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
             <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2 flex-wrap">
               <BuildingOffice2Icon className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
-              20 Mass Hiring Companies — Fresher Job Roles
+              {MASS_HIRING_PROFILES.length} Mass Hiring Companies — Fresher Job Roles
             </h2>
             <p className="text-primary-100 text-sm mt-1">
               ATS scores for entry-level positions at top recruiters
@@ -255,9 +238,9 @@ const ATSAnalysis = () => {
           </div>
           <div className="p-4 sm:p-6">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
-              {MASS_HIRING_COMPANIES.map(({ company, role }) => (
+              {massHiringCompanyRows.map(({ company, role }) => (
                 <button
-                  key={company}
+                  key={`${company}-${role}`}
                   onClick={() => openEntityModal(company)}
                   className="p-4 rounded-xl border-2 text-left transition border-gray-200 hover:border-primary-300 hover:bg-gray-50"
                 >

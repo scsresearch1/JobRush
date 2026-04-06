@@ -19,6 +19,7 @@ import {
 } from '@heroicons/react/24/outline'
 import DownloadResumeModal from '../components/DownloadResumeModal.jsx'
 import { Link } from 'react-router-dom'
+import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
 
 const ResumeUpload = () => {
   const navigate = useNavigate()
@@ -178,7 +179,7 @@ const ResumeUpload = () => {
                 <BuildingOffice2Icon className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="font-semibold text-gray-900 text-sm">20+ Mass Hiring Companies</p>
+                <p className="font-semibold text-gray-900 text-sm">{MASS_HIRING_PROFILES.length} mass hiring companies (IT + core engineering)</p>
                 <p className="text-xs text-gray-600 mt-0.5">Mapping with top recruiters</p>
               </div>
             </div>

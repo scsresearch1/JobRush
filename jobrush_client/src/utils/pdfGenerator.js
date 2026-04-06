@@ -1,4 +1,4 @@
-import jsPDF from 'jspdf'
+import { jsPDF } from 'jspdf'
 
 // Get template layout and colors based on template ID
 const getTemplateConfig = (templateId) => {
