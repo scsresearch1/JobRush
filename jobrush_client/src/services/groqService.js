@@ -184,18 +184,3 @@ export async function chatSelectra(messages) {
   return fetchApi('/api/chat', { messages })
 }
 
-/**
- * Notify operations when a user submits payment reference (access request).
- * @param {{ email: string, paymentReference: string, couponCode?: string | null }} payload
- */
-export async function notifyNewPaymentRequest(payload) {
-  return fetchApi(
-    '/api/notify-new-payment-request',
-    {
-      email: payload.email,
-      paymentReference: payload.paymentReference,
-      couponCode: payload.couponCode ?? null,
-    },
-    { allowRetry: false }
-  )
-}

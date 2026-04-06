@@ -49,23 +49,9 @@ npm run preview
 
 Deploy `dist/` to any static host (separate Netlify site, S3, etc.). Set the Firebase web config env vars in the host dashboard.
 
-## Payment verification emails
+## Payment decisions (email disabled for now)
 
-**Approve payment** / **Reject** updates `userdb` in Firebase, then asks the JobRush API to send email.
-
-1. **API server** (`server/` on Render, etc.): set `ADMIN_API_SECRET` — see `server/.env.example`.
-2. **SMTP** — either:
-   - Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and optionally `MAIL_FROM` on the API server, **or**
-   - Use **Settings → Change admin email**: save **Outbound email (SMTP)** to `adminPortal/emailOutbound`. The API uses the Realtime Database URL baked into the repo (`server/index.js`); optional **`FIREBASE_DATABASE_URL`** on Render overrides it. Env SMTP vars still override Firebase per field when set.
-3. **Admin site build** (Netlify *Site settings → Environment variables*): set **`VITE_ADMIN_API_SECRET`** to the **same** string as **`ADMIN_API_SECRET`** on the API server, then **redeploy** (Vite inlines env at build time). Use `VITE_JOBRUSH_API_BASE` if the API URL is not `https://jobrush.onrender.com`.
-
-Realtime Database rules must allow read/write on `adminPortal/emailOutbound` (included in the repo’s `firebase-database.rules.json`).
-
-To **seed** `emailOutbound` from your machine without using the admin UI, run `npm run firebase:create-collections` with `JOBRUSH_EMAIL_OUTBOUND_SMTP_PASS` (and mail/user env vars) set in the shell only — see the comment block at the top of `scripts/create-firebase-collections.js`. Do not commit those values.
-
-**Settings → Outbound email** includes **Send test email** (uses `POST /api/admin/send-test-email`). With an app password typed in the form, the test can run before you save; otherwise the API uses Firebase / env.
-
-If SMTP or the secret is missing, the user record still updates; the UI will report that email delivery failed (e.g. “Missing `VITE_ADMIN_API_SECRET`”).
+**Approve payment** / **Reject** only updates `userdb` in Firebase. Outbound notification email and API mail routes are not wired in the current build; they can be re-added later.
 
 ## Firebase rules
 

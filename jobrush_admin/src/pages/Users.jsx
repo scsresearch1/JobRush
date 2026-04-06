@@ -10,7 +10,6 @@ import {
 import { listUsers, deleteUser, updateUserRecord } from '../services/adminDb'
 import { USERDB_FIELDS } from '../config/schema'
 import { formatTimestampIST } from '../utils/formatIst'
-import { sendPaymentDecisionEmail } from '../services/paymentDecisionMail'
 import PaymentReviewModal from '../components/PaymentReviewModal'
 
 const QUOTA_ATS = 5
@@ -143,19 +142,6 @@ export default function Users() {
       })
     }
 
-    try {
-      await sendPaymentDecisionEmail({
-        toEmail: email,
-        decision,
-        paymentReference: ref,
-        userLabel: String(email).split('@')[0],
-      })
-    } catch (e) {
-      await load()
-      throw new Error(
-        `${decision === 'approved' ? 'Access updated' : 'Record updated'}, but email failed: ${e.message || e}`
-      )
-    }
     await load()
   }
 

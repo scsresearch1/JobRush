@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { fetchPaymentQrImageUrlFromFirebase } from '../services/paymentQrFirebase.js'
 import { resolvePaymentQrFallbackSrc } from '../config/paymentQr.js'
 import { syncUserFieldsToFirebase } from '../services/database.js'
-import { notifyNewPaymentRequest } from '../services/groqService.js'
 import {
   XMarkIcon,
   QrCodeIcon,
@@ -17,8 +16,8 @@ const RESUME_CORRECTIONS = 5
 const MOCK_INTERVIEWS = 5
 
 /**
- * Post-email onboarding: plan summary, coupon field (logic TBD), QR payment,
- * payment reference capture, and access request confirmation.
+ * Plan summary, coupon field (logic TBD), QR payment, payment reference capture,
+ * and access request confirmation (Firebase + local state; outbound email disabled).
  */
 const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mode = 'activation' }) => {
   const isRenewal = mode === 'repayment'
@@ -106,11 +105,6 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
     setRefError('')
     setSubmitting(true)
     try {
-      await notifyNewPaymentRequest({
-        email,
-        paymentReference: ref,
-        couponCode: couponCode.trim() || null,
-      })
       const patch = {
         accessStatus: 'awaiting_activation',
         paymentReference: ref,
@@ -128,7 +122,7 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
     } catch (err) {
       setRefError(
         err?.message ||
-          'We could not send your request. Check your connection and try again, or contact support with your payment reference.'
+          'We could not save your request. Check your connection and try again, or contact support with your payment reference.'
       )
     } finally {
       setSubmitting(false)

@@ -1,10 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  ArrowPathIcon,
-  TrashIcon,
-  EnvelopeIcon,
-  DocumentMagnifyingGlassIcon,
-} from '@heroicons/react/24/outline'
+import { ArrowPathIcon, TrashIcon, DocumentMagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import {
   listUsers,
   listInterviewReports,
@@ -12,7 +7,6 @@ import {
   deleteAllReportsForUser,
 } from '../services/adminDb'
 import { USERDB_FIELDS, INTERVIEW_REPORTS_FIELDS, ATS_REPORT_FIELDS } from '../config/schema'
-import { sendAdminUserEmail } from '../services/adminUserEmail'
 import UserReportsModal from '../components/UserReportsModal'
 
 const SLOT_MAX = 5
@@ -87,53 +81,6 @@ export default function Reports() {
   }, [userRows, query])
 
   const openView = (row) => setModal({ open: true, row })
-
-  const emailLatest = async (row) => {
-    const email = row.email
-    if (!email || email === '—') {
-      alert('No email address on file for this user.')
-      return
-    }
-    const mockSorted = [...row.mock].sort((a, b) =>
-      String(b[INTERVIEW_REPORTS_FIELDS.GENERATED_AT] || '').localeCompare(
-        String(a[INTERVIEW_REPORTS_FIELDS.GENERATED_AT] || '')
-      )
-    )
-    const atsSorted = [...row.ats].sort((a, b) =>
-      String(b[ATS_REPORT_FIELDS.GENERATED_AT] || '').localeCompare(String(a[ATS_REPORT_FIELDS.GENERATED_AT] || ''))
-    )
-    const latestMock = mockSorted[0]
-    const latestAts = atsSorted[0]
-    if (!latestMock && !latestAts) {
-      alert('There are no saved reports to send.')
-      return
-    }
-
-    let text = `JobRush — latest saved reports\n\n`
-    if (latestAts) {
-      text += `ATS compatibility (saved ${latestAts[ATS_REPORT_FIELDS.GENERATED_AT] || ''}):\n`
-      text += `${JSON.stringify(latestAts[ATS_REPORT_FIELDS.REPORT], null, 2)}\n\n`
-    }
-    if (latestMock) {
-      text += `Mock interview (saved ${latestMock[INTERVIEW_REPORTS_FIELDS.GENERATED_AT] || ''}):\n`
-      text += `${JSON.stringify(latestMock[INTERVIEW_REPORTS_FIELDS.REPORT], null, 2)}\n\n`
-    }
-    text += `— Sent from JobRush Admin\n`
-
-    setBusyUserId(row.userId)
-    try {
-      await sendAdminUserEmail({
-        toEmail: email,
-        subject: 'JobRush — your latest ATS and mock interview reports',
-        text,
-      })
-      alert('Email sent.')
-    } catch (e) {
-      alert(e?.message || 'Failed to send email')
-    } finally {
-      setBusyUserId(null)
-    }
-  }
 
   const deleteAll = async (row) => {
     if (
@@ -234,15 +181,6 @@ export default function Reports() {
                           >
                             <DocumentMagnifyingGlassIcon className="w-4 h-4 shrink-0" />
                             View reports · ATS {nAts}/{SLOT_MAX} · Mock {nMock}/{SLOT_MAX}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy || row.email === '—'}
-                            onClick={() => emailLatest(row)}
-                            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-sky-900/40 text-sky-200 text-xs font-medium ring-1 ring-sky-800/50 hover:bg-sky-900/60 disabled:opacity-50 whitespace-nowrap"
-                          >
-                            <EnvelopeIcon className="w-4 h-4 shrink-0" />
-                            Email latest reports
                           </button>
                           <button
                             type="button"
