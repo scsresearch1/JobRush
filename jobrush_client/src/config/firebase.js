@@ -26,6 +26,7 @@ const firebaseConfig = {
 }
 
 const app = initializeApp(firebaseConfig)
-export const database = getDatabase(app)
+/** Pass URL explicitly — avoids some regional RTDB / config mismatch warnings in the SDK. */
+export const database = getDatabase(app, JOBBRUSH_REALTIME_DATABASE_URL)
 
 export default app
