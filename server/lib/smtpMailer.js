@@ -1,14 +1,22 @@
 import nodemailer from 'nodemailer'
 
-/** Avoid hanging forever on blocked outbound SMTP (Render ↔ Gmail). */
-export const SMTP_SOCKET_MS = 25_000
+/**
+ * Gmail (and others) from cloud hosts (e.g. Render) often time out on IPv6; IPv4 is reliable.
+ * Override with SMTP_CONNECT_TIMEOUT_MS (ms) or SMTP_FORCE_IPV4=0 to skip family: 4.
+ */
+export const SMTP_SOCKET_MS = Number(process.env.SMTP_CONNECT_TIMEOUT_MS || 60_000)
 
 export function createSmtpTransport(opts) {
+  const port = Number(opts.port ?? 587)
+  const useIpv4 = String(process.env.SMTP_FORCE_IPV4 || '1').toLowerCase() !== '0'
   return nodemailer.createTransport({
     ...opts,
     connectionTimeout: SMTP_SOCKET_MS,
     greetingTimeout: SMTP_SOCKET_MS,
     socketTimeout: SMTP_SOCKET_MS,
+    ...(useIpv4 ? { family: 4 } : {}),
+    ...(port === 587 && !opts.secure ? { requireTLS: true } : {}),
+    tls: { minVersion: 'TLSv1.2', ...(typeof opts.tls === 'object' ? opts.tls : {}) },
   })
 }
 
