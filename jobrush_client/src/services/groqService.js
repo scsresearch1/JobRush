@@ -48,7 +48,8 @@ export async function pingHealth(maxAttempts = 9, intervalMs = 10000) {
   return false
 }
 
-async function fetchApi(path, body, retryCount = 0) {
+async function fetchApi(path, body, opts = {}, retryCount = 0) {
+  const allowRetry = opts.allowRetry !== false
   const url = API_BASE ? `${API_BASE}${path}` : path
   console.log('[JobRush API]', { url, path, apiBase: API_BASE || '(proxy)', attempt: retryCount + 1 })
   const controller = new AbortController()
@@ -67,10 +68,10 @@ async function fetchApi(path, body, retryCount = 0) {
     clearTimeout(timeoutId)
     console.error('[JobRush API] Fetch error', { path, name: err.name, message: err.message, attempt: retryCount + 1 })
     const isRetryable = err.name === 'AbortError' || err.message?.includes('timed out') || err.message?.includes('unreachable')
-    if (isRetryable && retryCount < MAX_RETRIES) {
+    if (isRetryable && allowRetry && retryCount < MAX_RETRIES) {
       console.log('[JobRush API] Retrying after', RETRY_DELAY_MS / 1000, 's (server may be waking)')
       await sleep(RETRY_DELAY_MS)
-      return fetchApi(path, body, retryCount + 1)
+      return fetchApi(path, body, opts, retryCount + 1)
     }
     if (err.message?.includes('timed out')) throw err
     if (err.name === 'AbortError') {
@@ -188,9 +189,13 @@ export async function chatSelectra(messages) {
  * @param {{ email: string, paymentReference: string, couponCode?: string | null }} payload
  */
 export async function notifyNewPaymentRequest(payload) {
-  return fetchApi('/api/notify-new-payment-request', {
-    email: payload.email,
-    paymentReference: payload.paymentReference,
-    couponCode: payload.couponCode ?? null,
-  })
+  return fetchApi(
+    '/api/notify-new-payment-request',
+    {
+      email: payload.email,
+      paymentReference: payload.paymentReference,
+      couponCode: payload.couponCode ?? null,
+    },
+    { allowRetry: false }
+  )
 }

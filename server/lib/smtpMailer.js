@@ -4,7 +4,8 @@ import nodemailer from 'nodemailer'
  * Gmail (and others) from cloud hosts (e.g. Render) often time out on IPv6; IPv4 is reliable.
  * Override with SMTP_CONNECT_TIMEOUT_MS (ms) or SMTP_FORCE_IPV4=0 to skip family: 4.
  */
-export const SMTP_SOCKET_MS = Number(process.env.SMTP_CONNECT_TIMEOUT_MS || 60_000)
+/** Fail fast when SMTP is used (no long hangs). Override with SMTP_CONNECT_TIMEOUT_MS. */
+export const SMTP_SOCKET_MS = Number(process.env.SMTP_CONNECT_TIMEOUT_MS || 15_000)
 
 export function createSmtpTransport(opts) {
   const port = Number(opts.port ?? 587)

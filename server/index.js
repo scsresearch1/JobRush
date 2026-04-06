@@ -10,6 +10,7 @@ import cors from 'cors'
 import Groq from 'groq-sdk'
 import nodemailer from 'nodemailer'
 import { createSmtpTransport, buildMailerFromDraft } from './lib/smtpMailer.js'
+import { sendTransactionalEmail, isResendConfigured } from './lib/sendTransactionalEmail.js'
 
 /** Same RTDB as client/admin (jobrush_client/src/config/firebaseJobbrushDefaults.js). Override with FIREBASE_DATABASE_URL if needed. */
 const DEFAULT_FIREBASE_RTDB_URL =
@@ -496,10 +497,13 @@ app.post('/api/notify-new-payment-request', async (req, res) => {
 
     const notifyTo = String(process.env.PAYMENT_NOTIFY_TO || 'hirefortune90@gmail.com').trim()
     const mailer = await resolveMailer()
-    if (!mailer) {
+    const db = await fetchEmailOutboundFromRtdb()
+    const fallbackFrom = db && String(db.mailFrom || '').trim()
+
+    if (!isResendConfigured() && !mailer) {
       return res.status(503).json({
         error:
-          'Email is not configured on the server. Set SMTP_HOST, SMTP_USER, SMTP_PASS (and optional MAIL_FROM) on the API host, or save outbound email in JobRush admin Settings (read from Firebase RTDB).',
+          'Email is not configured. Set RESEND_API_KEY on the API (fast, recommended) or SMTP / Firebase outbound settings.',
       })
     }
 
@@ -518,17 +522,19 @@ app.post('/api/notify-new-payment-request', async (req, res) => {
     const subject = 'Urgent-New User'
 
     try {
-      await mailer.transport.sendMail({
-        from: mailer.from,
+      await sendTransactionalEmail({
         to: notifyTo,
-        replyTo: userEmail,
         subject,
         text,
+        replyTo: userEmail,
+        mailer: mailer || null,
+        fallbackFrom,
       })
       res.json({ ok: true })
     } catch (e) {
-      console.error('notify-new-payment-request sendMail:', e)
-      res.status(500).json({ error: e.message || 'Failed to send notification email.' })
+      console.error('notify-new-payment-request send:', e)
+      const status = e?.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500
+      res.status(status).json({ error: e.message || 'Failed to send notification email.' })
     }
   } catch (err) {
     console.error('notify-new-payment-request:', err)
@@ -537,7 +543,12 @@ app.post('/api/notify-new-payment-request', async (req, res) => {
 })
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, llm: !!groq, tts: !!textToSpeechClient })
+  res.json({
+    ok: true,
+    llm: !!groq,
+    tts: !!textToSpeechClient,
+    email: isResendConfigured() ? 'resend' : 'smtp',
+  })
 })
 
 const RTDB_EMAIL_OUTBOUND_PATH = 'adminPortal/emailOutbound'
@@ -583,6 +594,13 @@ async function fetchEmailOutboundFromRtdb() {
 function mailerFromBodyOutbound(body) {
   const o = body?.outbound
   return o && typeof o === 'object' ? buildMailerFromDraft(o) : null
+}
+
+/** Mail “From” hint for Resend when RESEND_FROM is not set (admin body or Firebase). */
+function mailFromHintFromRequestBody(body) {
+  const o = body?.outbound || body?.draft
+  if (!o || typeof o !== 'object') return ''
+  return String(o.mailFrom || '').trim()
 }
 
 /**
@@ -632,14 +650,14 @@ app.post('/api/admin/notify-payment-decision', async (req, res) => {
 
   let mailer = mailerFromBodyOutbound(req.body)
   if (!mailer) mailer = await resolveMailer()
-  if (!mailer) {
+  const fallbackFrom = mailFromHintFromRequestBody(req.body)
+  if (!isResendConfigured() && !mailer) {
     return res.status(503).json({
       error:
-        'Email is not configured. Save outbound SMTP in JobRush admin → Settings (Firebase), set SMTP_* on the API server, or ensure the admin app is redeployed so it can send saved settings with this request.',
+        'Email is not configured. Set RESEND_API_KEY on the API or save SMTP in admin Settings.',
     })
   }
 
-  const { transport, from } = mailer
   const subject =
     d === 'approved' ? 'JobRush — your access is active' : 'JobRush — payment verification update'
   const refLine = paymentReference ? `Reference you submitted: ${paymentReference}\n\n` : ''
@@ -650,11 +668,18 @@ app.post('/api/admin/notify-payment-decision', async (req, res) => {
       : `${greeting}We were unable to verify your payment with the reference we have on file.\n\n${refLine}Please try again from the JobRush app or contact support with proof of payment if you believe this is a mistake.\n\n— JobRush\n`
 
   try {
-    await transport.sendMail({ from, to: email, subject, text })
+    await sendTransactionalEmail({
+      to: email,
+      subject,
+      text,
+      mailer: mailer || null,
+      fallbackFrom,
+    })
     res.json({ ok: true })
   } catch (e) {
     console.error('notify-payment-decision mail error', e)
-    res.status(500).json({ error: e.message || 'Failed to send email' })
+    const status = e?.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500
+    res.status(status).json({ error: e.message || 'Failed to send email' })
   }
 })
 
@@ -682,22 +707,28 @@ app.post('/api/admin/send-user-email', async (req, res) => {
 
   let mailer = mailerFromBodyOutbound(req.body)
   if (!mailer) mailer = await resolveMailer()
-  if (!mailer) {
+  const fallbackFrom = mailFromHintFromRequestBody(req.body)
+  if (!isResendConfigured() && !mailer) {
     return res.status(503).json({
-      error:
-        'Email is not configured. Save outbound SMTP in admin Settings (Firebase), set SMTP_* on the API server, or redeploy the admin app so it attaches saved settings to this request.',
+      error: 'Email is not configured. Set RESEND_API_KEY on the API or save SMTP in admin Settings.',
     })
   }
 
-  const { transport, from } = mailer
   const clipped = body.length > 12000 ? `${body.slice(0, 12000)}\n\n[Message truncated for email size limits.]\n` : body
 
   try {
-    await transport.sendMail({ from, to: email, subject: subj, text: clipped })
+    await sendTransactionalEmail({
+      to: email,
+      subject: subj,
+      text: clipped,
+      mailer: mailer || null,
+      fallbackFrom,
+    })
     res.json({ ok: true })
   } catch (e) {
     console.error('send-user-email error', e)
-    res.status(500).json({ error: e.message || 'Failed to send email' })
+    const status = e?.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500
+    res.status(status).json({ error: e.message || 'Failed to send email' })
   }
 })
 
@@ -718,28 +749,35 @@ app.post('/api/admin/send-test-email', async (req, res) => {
     return res.status(400).json({ error: 'Valid toEmail is required' })
   }
 
+  const fallbackFrom = mailFromHintFromRequestBody(req.body)
   let mailer = buildMailerFromDraft(req.body?.draft || req.body?.outbound)
   if (!mailer) {
     emailOutboundCache = { at: 0, val: null, ok: false }
     mailer = await resolveMailer()
   }
-  if (!mailer) {
+  if (!isResendConfigured() && !mailer) {
     return res.status(503).json({
       error:
-        'Email is not configured. Save outbound SMTP in admin Settings (Firebase), or set SMTP_* on this server. After saving, use Send test without retyping the app password — the admin app sends settings with the request.',
+        'Email is not configured. Set RESEND_API_KEY + RESEND_FROM on the API (fastest), or save SMTP in admin Settings.',
     })
   }
 
-  const { transport, from } = mailer
   const subject = 'JobRush — test email'
-  const text = `This is a test message from the JobRush API.\n\nIf you received this, outbound SMTP is working.\n\nSent at ${new Date().toISOString()}\n`
+  const text = `This is a test message from the JobRush API.\n\nSent at ${new Date().toISOString()}\n`
 
   try {
-    await transport.sendMail({ from, to: email, subject, text })
+    await sendTransactionalEmail({
+      to: email,
+      subject,
+      text,
+      mailer: mailer || null,
+      fallbackFrom,
+    })
     res.json({ ok: true })
   } catch (e) {
     console.error('send-test-email error', e)
-    res.status(500).json({ error: e.message || 'Failed to send test email' })
+    const status = e?.code === 'EMAIL_NOT_CONFIGURED' ? 503 : 500
+    res.status(status).json({ error: e.message || 'Failed to send test email' })
   }
 })
 
