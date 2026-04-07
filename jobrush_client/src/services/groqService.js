@@ -184,3 +184,20 @@ export async function chatSelectra(messages) {
   return fetchApi('/api/chat', { messages })
 }
 
+/**
+ * Email acknowledgement after payment reference submission.
+ * @param {{ email: string, upiReference: string, couponCode?: string | null, requestedAt?: string }} payload
+ */
+export async function notifyNewPaymentRequest(payload) {
+  return fetchApi(
+    '/api/notify-new-payment-request',
+    {
+      email: payload?.email,
+      upiReference: payload?.upiReference,
+      couponCode: payload?.couponCode || null,
+      requestedAt: payload?.requestedAt || new Date().toISOString(),
+    },
+    { allowRetry: false }
+  )
+}
+

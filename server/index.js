@@ -8,6 +8,7 @@ config({ path: resolve(process.cwd(), '.env') })
 import express from 'express'
 import cors from 'cors'
 import Groq from 'groq-sdk'
+import { Resend } from 'resend'
 const app = express()
 
 // CORS: reflect request origin (required by some proxies)
@@ -32,6 +33,52 @@ const groq = process.env.GROQ_API_KEY
   : null
 
 const MODEL = 'llama-3.3-70b-versatile'
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
+const ADMIN_API_SECRET = String(process.env.ADMIN_API_SECRET || '').trim()
+
+const MAIL_FROM_NEW_USER = 'JobRush Onboarding Team <NewUser@resend.dev>'
+const MAIL_FROM_WELCOME = 'JobRush Access Team <welcome_jobrush@resend.dev>'
+const MAIL_FROM_REPORTS = 'JobRush Reports Desk <reports_Jobrush@resend.dev>'
+
+function requireAdminSecret(req, res, next) {
+  if (!ADMIN_API_SECRET) {
+    return res.status(500).json({ error: 'ADMIN_API_SECRET is missing on the API server.' })
+  }
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim()
+  if (!token || token !== ADMIN_API_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized admin request.' })
+  }
+  next()
+}
+
+function cleanEmail(v) {
+  return String(v || '')
+    .trim()
+    .toLowerCase()
+}
+
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+async function sendResendMail({ from, to, subject, html, text }) {
+  if (!resend) throw new Error('Email service not configured. Add RESEND_API_KEY.')
+  const payload = {
+    from,
+    to: Array.isArray(to) ? to : [to],
+    subject,
+    html,
+    text,
+  }
+  const out = await resend.emails.send(payload)
+  if (out?.error) throw new Error(out.error.message || 'Resend rejected the email request.')
+  return out?.data?.id || null
+}
 
 async function callGroq(systemPrompt, userPrompt, maxTokens = 1024) {
   if (!groq) {
@@ -470,8 +517,184 @@ app.post('/api/chat', async (req, res) => {
   }
 })
 
+/**
+ * POST /api/notify-new-payment-request
+ * Body: { email, upiReference, couponCode, requestedAt }
+ */
+app.post('/api/notify-new-payment-request', async (req, res) => {
+  try {
+    const email = cleanEmail(req.body?.email)
+    const upiReference = String(req.body?.upiReference || '').trim()
+    const couponCode = String(req.body?.couponCode || '').trim()
+    const requestedAt = String(req.body?.requestedAt || new Date().toISOString())
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid user email is required.' })
+    }
+    const refLine = upiReference ? `Payment reference: ${upiReference}` : 'Payment reference: Not provided'
+    const couponLine = couponCode ? `Coupon code submitted: ${couponCode}` : 'Coupon code submitted: None'
+    const subject = 'We received your JobRush payment request'
+    const text = [
+      `Hello,`,
+      ``,
+      `Thank you for submitting your payment request for JobRush.`,
+      `${refLine}`,
+      `${couponLine}`,
+      `Requested at: ${requestedAt}`,
+      ``,
+      `Our team is reviewing your payment details. You will receive a separate email once access is approved or if any clarification is needed.`,
+      ``,
+      `Regards,`,
+      `JobRush Onboarding Team`,
+    ].join('\n')
+    const html = `
+      <div style="font-family:Arial,sans-serif;line-height:1.55;color:#111827">
+        <p>Hello,</p>
+        <p>Thank you for submitting your payment request for <strong>JobRush</strong>.</p>
+        <p>
+          <strong>Payment reference:</strong> ${esc(upiReference || 'Not provided')}<br/>
+          <strong>Coupon code submitted:</strong> ${esc(couponCode || 'None')}<br/>
+          <strong>Requested at:</strong> ${esc(requestedAt)}
+        </p>
+        <p>Our team is reviewing your payment details. You will receive a separate email once access is approved or if any clarification is needed.</p>
+        <p>Regards,<br/>JobRush Onboarding Team</p>
+      </div>
+    `
+    const messageId = await sendResendMail({
+      from: MAIL_FROM_NEW_USER,
+      to: email,
+      subject,
+      html,
+      text,
+    })
+    res.json({ ok: true, messageId })
+  } catch (err) {
+    console.error('notify-new-payment-request error:', err)
+    res.status(500).json({ error: err.message || 'Failed to send acknowledgement email.' })
+  }
+})
+
+/**
+ * POST /api/admin/notify-payment-decision
+ * Body: { email, decision, paymentReference, approvedAt }
+ */
+app.post('/api/admin/notify-payment-decision', requireAdminSecret, async (req, res) => {
+  try {
+    const email = cleanEmail(req.body?.email)
+    const decision = String(req.body?.decision || '').trim().toLowerCase()
+    const paymentReference = String(req.body?.paymentReference || '').trim()
+    const approvedAt = String(req.body?.approvedAt || new Date().toISOString())
+    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid recipient email is required.' })
+    if (decision !== 'approved' && decision !== 'rejected') {
+      return res.status(400).json({ error: 'Decision must be "approved" or "rejected".' })
+    }
+
+    const isApproved = decision === 'approved'
+    const subject = isApproved
+      ? 'Your JobRush access is now active'
+      : 'Action required: JobRush payment verification'
+    const text = isApproved
+      ? [
+          `Hello,`,
+          ``,
+          `Great news. Your JobRush payment has been verified and your access is now active.`,
+          paymentReference ? `Payment reference: ${paymentReference}` : null,
+          `Activation time: ${approvedAt}`,
+          ``,
+          `You can now use your included ATS checks and mock interview sessions.`,
+          ``,
+          `Regards,`,
+          `JobRush Access Team`,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : [
+          `Hello,`,
+          ``,
+          `We could not verify your recent payment details for JobRush.`,
+          paymentReference ? `Submitted reference: ${paymentReference}` : null,
+          ``,
+          `Please complete payment again and submit a fresh reference from your dashboard, or contact support with proof of payment.`,
+          ``,
+          `Regards,`,
+          `JobRush Access Team`,
+        ]
+          .filter(Boolean)
+          .join('\n')
+
+    const html = isApproved
+      ? `
+        <div style="font-family:Arial,sans-serif;line-height:1.55;color:#111827">
+          <p>Hello,</p>
+          <p>Great news. Your <strong>JobRush</strong> payment has been verified and your access is now active.</p>
+          <p>
+            ${paymentReference ? `<strong>Payment reference:</strong> ${esc(paymentReference)}<br/>` : ''}
+            <strong>Activation time:</strong> ${esc(approvedAt)}
+          </p>
+          <p>You can now use your included ATS checks and mock interview sessions.</p>
+          <p>Regards,<br/>JobRush Access Team</p>
+        </div>
+      `
+      : `
+        <div style="font-family:Arial,sans-serif;line-height:1.55;color:#111827">
+          <p>Hello,</p>
+          <p>We could not verify your recent payment details for <strong>JobRush</strong>.</p>
+          <p>${paymentReference ? `<strong>Submitted reference:</strong> ${esc(paymentReference)}<br/>` : ''}</p>
+          <p>Please complete payment again and submit a fresh reference from your dashboard, or contact support with proof of payment.</p>
+          <p>Regards,<br/>JobRush Access Team</p>
+        </div>
+      `
+
+    const messageId = await sendResendMail({
+      from: MAIL_FROM_WELCOME,
+      to: email,
+      subject,
+      html,
+      text,
+    })
+    res.json({ ok: true, messageId })
+  } catch (err) {
+    console.error('notify-payment-decision error:', err)
+    res.status(500).json({ error: err.message || 'Failed to send payment decision email.' })
+  }
+})
+
+/**
+ * POST /api/admin/send-user-email
+ * Body: { to, subject, message }
+ */
+app.post('/api/admin/send-user-email', requireAdminSecret, async (req, res) => {
+  try {
+    const toRaw = req.body?.to
+    const to = Array.isArray(toRaw) ? toRaw.map(cleanEmail).filter(Boolean) : [cleanEmail(toRaw)].filter(Boolean)
+    const subject = String(req.body?.subject || '').trim()
+    const message = String(req.body?.message || '').trim()
+    if (!to.length) return res.status(400).json({ error: 'At least one recipient email is required.' })
+    if (!subject) return res.status(400).json({ error: 'Email subject is required.' })
+    if (!message) return res.status(400).json({ error: 'Email message is required.' })
+
+    const text = `${message}\n\nRegards,\nJobRush Reports Desk`
+    const html = `
+      <div style="font-family:Arial,sans-serif;line-height:1.55;color:#111827">
+        <p>${esc(message).replace(/\n/g, '<br/>')}</p>
+        <p>Regards,<br/>JobRush Reports Desk</p>
+      </div>
+    `
+    const messageId = await sendResendMail({
+      from: MAIL_FROM_REPORTS,
+      to,
+      subject,
+      html,
+      text,
+    })
+    res.json({ ok: true, messageId, recipients: to.length })
+  } catch (err) {
+    console.error('send-user-email error:', err)
+    res.status(500).json({ error: err.message || 'Failed to send report email.' })
+  }
+})
+
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, llm: !!groq, tts: !!textToSpeechClient })
+  res.json({ ok: true, llm: !!groq, tts: !!textToSpeechClient, email: !!resend })
 })
 
 const PORT = process.env.PORT || 3001

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { fetchPaymentQrImageUrlFromFirebase } from '../services/paymentQrFirebase.js'
 import { resolvePaymentQrFallbackSrc } from '../config/paymentQr.js'
 import { syncUserFieldsToFirebase } from '../services/database.js'
+import { notifyNewPaymentRequest } from '../services/groqService.js'
 import {
   XMarkIcon,
   QrCodeIcon,
@@ -17,7 +18,7 @@ const MOCK_INTERVIEWS = 5
 
 /**
  * Plan summary, coupon field (logic TBD), QR payment, payment reference capture,
- * and access request confirmation (Firebase + local state; outbound email disabled).
+ * and access request confirmation (Firebase + local state + acknowledgement email).
  */
 const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mode = 'activation' }) => {
   const isRenewal = mode === 'repayment'
@@ -118,6 +119,12 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
         upiReference: ref,
         couponCode: couponCode.trim() || null,
       })
+      notifyNewPaymentRequest({
+        email,
+        upiReference: ref,
+        couponCode: couponCode.trim() || null,
+        requestedAt: patch.accessRequestedAt,
+      }).catch(() => {})
       setStep('confirmation')
     } catch (err) {
       setRefError(
@@ -338,7 +345,7 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
               <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-5">
                 <p className="text-sm font-medium text-emerald-900 mb-2">Request received</p>
                 <p className="text-sm text-emerald-900/90 leading-relaxed">
-                  Thank you. Please check the email address you provided (
+                  Thank you. We have sent an acknowledgement to (
                   <span className="font-medium">{email}</span>) within approximately{' '}
                   <span className="font-semibold">30 minutes</span> for activation instructions.
                 </p>

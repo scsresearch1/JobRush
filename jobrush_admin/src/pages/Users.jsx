@@ -11,6 +11,7 @@ import { listUsers, deleteUser, updateUserRecord } from '../services/adminDb'
 import { USERDB_FIELDS } from '../config/schema'
 import { formatTimestampIST } from '../utils/formatIst'
 import PaymentReviewModal from '../components/PaymentReviewModal'
+import { sendPaymentDecisionEmail } from '../services/adminApiMail'
 
 const QUOTA_ATS = 5
 const QUOTA_MOCK = 5
@@ -140,6 +141,16 @@ export default function Users() {
         [USERDB_FIELDS.PAYMENT_REFERENCE]: null,
         [USERDB_FIELDS.ACCESS_REQUESTED_AT]: null,
       })
+    }
+
+    try {
+      await sendPaymentDecisionEmail({
+        email,
+        decision,
+        paymentReference: ref || null,
+      })
+    } catch (mailErr) {
+      alert(`User updated, but email delivery failed: ${mailErr?.message || 'Unknown mail error'}`)
     }
 
     await load()

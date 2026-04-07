@@ -66,7 +66,10 @@ export default function SettingsEmail() {
     <div className="max-w-2xl space-y-10">
       <div>
         <h1 className="text-2xl font-bold text-white mb-2">Settings</h1>
-        <p className="text-admin-300 text-sm mb-8">Change your admin sign-in. Outbound email is disabled for now.</p>
+        <p className="text-admin-300 text-sm mb-8">
+          Change your admin sign-in. Email workflow is active via Resend with fixed sender identities for onboarding,
+          approval, and reports.
+        </p>
 
         <div className="bg-admin-900/80 border border-admin-800 rounded-2xl p-6">
           <div className="flex items-center gap-3 mb-6">
@@ -75,7 +78,7 @@ export default function SettingsEmail() {
             </div>
             <div>
               <h2 className="font-semibold text-white">Admin sign-in</h2>
-              <p className="text-xs text-admin-400">Username: {currentUsername || '—'}</p>
+              <p className="text-xs text-admin-400">Username: {currentUsername || '—'} (quick update, minimal verification)</p>
             </div>
           </div>
 

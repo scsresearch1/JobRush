@@ -8,6 +8,7 @@ import {
 } from '../services/adminDb'
 import { USERDB_FIELDS, INTERVIEW_REPORTS_FIELDS, ATS_REPORT_FIELDS } from '../config/schema'
 import UserReportsModal from '../components/UserReportsModal'
+import { sendAdminUserEmail } from '../services/adminApiMail'
 
 const SLOT_MAX = 5
 
@@ -101,6 +102,38 @@ export default function Reports() {
     }
   }
 
+  const emailLatest = async (row) => {
+    if (!row?.email || row.email === '—') {
+      alert('No recipient email is available for this user.')
+      return
+    }
+    setBusyUserId(row.userId)
+    try {
+      const atsCount = Math.min(SLOT_MAX, row.ats.length)
+      const mockCount = Math.min(SLOT_MAX, row.mock.length)
+      const subject = 'Your latest JobRush report status'
+      const message = [
+        `Hello,`,
+        ``,
+        `This is a quick update from JobRush regarding your reports.`,
+        `- ATS reports available: ${atsCount}/${SLOT_MAX}`,
+        `- Mock interview reports available: ${mockCount}/${SLOT_MAX}`,
+        ``,
+        `Log in to your JobRush dashboard to review your latest insights and continue improving your profile.`,
+      ].join('\n')
+      await sendAdminUserEmail({
+        to: [row.email],
+        subject,
+        message,
+      })
+      alert('Report update email sent successfully.')
+    } catch (e) {
+      alert(e?.message || 'Could not send report email.')
+    } finally {
+      setBusyUserId(null)
+    }
+  }
+
   return (
     <div className="max-w-[100vw]">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
@@ -181,6 +214,14 @@ export default function Reports() {
                           >
                             <DocumentMagnifyingGlassIcon className="w-4 h-4 shrink-0" />
                             View reports · ATS {nAts}/{SLOT_MAX} · Mock {nMock}/{SLOT_MAX}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => emailLatest(row)}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-900/45 text-indigo-200 text-xs font-medium ring-1 ring-indigo-800/70 hover:bg-indigo-900/65 disabled:opacity-50 whitespace-nowrap"
+                          >
+                            Email latest reports
                           </button>
                           <button
                             type="button"
