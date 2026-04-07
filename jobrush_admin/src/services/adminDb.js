@@ -98,6 +98,10 @@ export function paymentQrRef() {
   return ref(database, `${COLLECTIONS.ADMIN_PORTAL}/${ADMIN_PORTAL_KEYS.PAYMENT_QR}`)
 }
 
+export function emailWorkflowRef() {
+  return ref(database, `${COLLECTIONS.ADMIN_PORTAL}/${ADMIN_PORTAL_KEYS.EMAIL_WORKFLOW}`)
+}
+
 /**
  * @returns {Promise<string | null>}
  */
@@ -124,6 +128,22 @@ export async function setPaymentQrImageUrl(qrImageUrl) {
 
 export async function clearPaymentQrImageUrl() {
   await remove(paymentQrRef())
+}
+
+export async function getNewUserNotifyEmail() {
+  const snapshot = await get(emailWorkflowRef())
+  if (!snapshot.exists()) return 'hirefortune90@gmail.com'
+  const val = snapshot.val()?.[ADMIN_PORTAL_FIELDS.NEW_USER_NOTIFY_TO]
+  const next = String(val || '').trim().toLowerCase()
+  return next || 'hirefortune90@gmail.com'
+}
+
+export async function setNewUserNotifyEmail(email) {
+  const next = String(email || '').trim().toLowerCase()
+  await set(emailWorkflowRef(), {
+    [ADMIN_PORTAL_FIELDS.NEW_USER_NOTIFY_TO]: next || 'hirefortune90@gmail.com',
+    updatedAt: new Date().toISOString(),
+  })
 }
 
 /**

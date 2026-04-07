@@ -21,6 +21,10 @@
         ".read": true,
         ".write": true
       },
+      "emailWorkflow": {
+        ".read": true,
+        ".write": true
+      },
       "emailOutbound": {
         ".read": true,
         ".write": true

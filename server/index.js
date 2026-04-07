@@ -35,6 +35,9 @@ const groq = process.env.GROQ_API_KEY
 const MODEL = 'llama-3.3-70b-versatile'
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 const ADMIN_API_SECRET = String(process.env.ADMIN_API_SECRET || '').trim()
+const DEFAULT_FIREBASE_RTDB_URL = 'https://jobrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
+const FIREBASE_DATABASE_URL = String(process.env.FIREBASE_DATABASE_URL || DEFAULT_FIREBASE_RTDB_URL).replace(/\/+$/, '')
+const DEFAULT_NEW_USER_NOTIFY_TO = 'hirefortune90@gmail.com'
 
 const MAIL_FROM_NEW_USER = 'JobRush Onboarding Team <NewUser@resend.dev>'
 const MAIL_FROM_WELCOME = 'JobRush Access Team <welcome_jobrush@resend.dev>'
@@ -78,6 +81,32 @@ async function sendResendMail({ from, to, subject, html, text }) {
   const out = await resend.emails.send(payload)
   if (out?.error) throw new Error(out.error.message || 'Resend rejected the email request.')
   return out?.data?.id || null
+}
+
+let cachedNotifyRecipient = { email: DEFAULT_NEW_USER_NOTIFY_TO, fetchedAt: 0 }
+const NOTIFY_RECIPIENT_TTL_MS = 60_000
+
+async function getNewUserNotifyRecipient() {
+  const now = Date.now()
+  if (now - cachedNotifyRecipient.fetchedAt < NOTIFY_RECIPIENT_TTL_MS) {
+    return cachedNotifyRecipient.email
+  }
+  try {
+    const resp = await fetch(`${FIREBASE_DATABASE_URL}/adminPortal/emailWorkflow/newUserNotifyTo.json`, {
+      method: 'GET',
+    })
+    if (!resp.ok) throw new Error(`RTDB read failed: ${resp.status}`)
+    const raw = await resp.json()
+    const next = cleanEmail(raw)
+    cachedNotifyRecipient = {
+      email: next && next.includes('@') ? next : DEFAULT_NEW_USER_NOTIFY_TO,
+      fetchedAt: now,
+    }
+  } catch (err) {
+    console.warn('new-user notify recipient fallback:', err.message)
+    cachedNotifyRecipient = { email: DEFAULT_NEW_USER_NOTIFY_TO, fetchedAt: now }
+  }
+  return cachedNotifyRecipient.email
 }
 
 async function callGroq(systemPrompt, userPrompt, maxTokens = 1024) {
@@ -530,43 +559,43 @@ app.post('/api/notify-new-payment-request', async (req, res) => {
     if (!email || !email.includes('@')) {
       return res.status(400).json({ error: 'Valid user email is required.' })
     }
+    const notifyRecipient = await getNewUserNotifyRecipient()
     const refLine = upiReference ? `Payment reference: ${upiReference}` : 'Payment reference: Not provided'
     const couponLine = couponCode ? `Coupon code submitted: ${couponCode}` : 'Coupon code submitted: None'
-    const subject = 'We received your JobRush payment request'
+    const subject = 'New JobRush user registration and payment request'
     const text = [
-      `Hello,`,
+      `Hello Team,`,
       ``,
-      `Thank you for submitting your payment request for JobRush.`,
+      `A new user has completed registration and submitted a payment request on JobRush.`,
+      `User email: ${email}`,
       `${refLine}`,
       `${couponLine}`,
       `Requested at: ${requestedAt}`,
-      ``,
-      `Our team is reviewing your payment details. You will receive a separate email once access is approved or if any clarification is needed.`,
       ``,
       `Regards,`,
       `JobRush Onboarding Team`,
     ].join('\n')
     const html = `
       <div style="font-family:Arial,sans-serif;line-height:1.55;color:#111827">
-        <p>Hello,</p>
-        <p>Thank you for submitting your payment request for <strong>JobRush</strong>.</p>
+        <p>Hello Team,</p>
+        <p>A new user has completed registration and submitted a payment request on <strong>JobRush</strong>.</p>
         <p>
+          <strong>User email:</strong> ${esc(email)}<br/>
           <strong>Payment reference:</strong> ${esc(upiReference || 'Not provided')}<br/>
           <strong>Coupon code submitted:</strong> ${esc(couponCode || 'None')}<br/>
           <strong>Requested at:</strong> ${esc(requestedAt)}
         </p>
-        <p>Our team is reviewing your payment details. You will receive a separate email once access is approved or if any clarification is needed.</p>
         <p>Regards,<br/>JobRush Onboarding Team</p>
       </div>
     `
     const messageId = await sendResendMail({
       from: MAIL_FROM_NEW_USER,
-      to: email,
+      to: notifyRecipient,
       subject,
       html,
       text,
     })
-    res.json({ ok: true, messageId })
+    res.json({ ok: true, messageId, recipient: notifyRecipient })
   } catch (err) {
     console.error('notify-new-payment-request error:', err)
     res.status(500).json({ error: err.message || 'Failed to send acknowledgement email.' })

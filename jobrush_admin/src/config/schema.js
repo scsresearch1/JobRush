@@ -9,6 +9,7 @@ export const COLLECTIONS = {
 export const ADMIN_PORTAL_KEYS = {
   CREDENTIALS: 'credentials',
   PAYMENT_QR: 'paymentQr',
+  EMAIL_WORKFLOW: 'emailWorkflow',
   /** SMTP + From address for payment / user emails (API reads RTDB; URL default in server/index.js) */
   EMAIL_OUTBOUND: 'emailOutbound',
 }
@@ -29,6 +30,7 @@ export const ADMIN_PORTAL_FIELDS = {
   PASSWORD: 'password',
   /** Data URL or https URL for UPI QR shown on the client payment modal */
   QR_IMAGE_URL: 'qrImageUrl',
+  NEW_USER_NOTIFY_TO: 'newUserNotifyTo',
 }
 
 export const USERDB_FIELDS = {
