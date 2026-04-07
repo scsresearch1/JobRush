@@ -35,13 +35,20 @@ const groq = process.env.GROQ_API_KEY
 const MODEL = 'llama-3.3-70b-versatile'
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 const ADMIN_API_SECRET = String(process.env.ADMIN_API_SECRET || '').trim()
-const DEFAULT_FIREBASE_RTDB_URL = 'https://jobrush-f2eb4-default-rtdb.asia-southeast1.firebasedatabase.app'
-const FIREBASE_DATABASE_URL = String(process.env.FIREBASE_DATABASE_URL || DEFAULT_FIREBASE_RTDB_URL).replace(/\/+$/, '')
-const DEFAULT_NEW_USER_NOTIFY_TO = 'hirefortune90@gmail.com'
+
+function cleanEmail(v) {
+  return String(v || '')
+    .trim()
+    .toLowerCase()
+}
+
+/** Inbox for “new user / payment request” alerts — set ADMIN_NOTIFY_EMAIL on the API host (Render, etc.). */
+const ADMIN_NOTIFY_EMAIL = cleanEmail(process.env.ADMIN_NOTIFY_EMAIL || 'hirefortune90@gmail.com')
 
 const MAIL_FROM_NEW_USER = 'JobRush Onboarding Team <newuser@fortunehire.in>'
 const MAIL_FROM_WELCOME = 'JobRush Access Team <welcome@fortunehire.in>'
 const MAIL_FROM_REPORTS = 'JobRush Reports Desk <reports@fortunehire.in>'
+const MAIL_REPLY_TO = 'info@fortunehire.in'
 
 function requireAdminSecret(req, res, next) {
   if (!ADMIN_API_SECRET) {
@@ -54,12 +61,6 @@ function requireAdminSecret(req, res, next) {
   next()
 }
 
-function cleanEmail(v) {
-  return String(v || '')
-    .trim()
-    .toLowerCase()
-}
-
 function esc(s) {
   return String(s || '')
     .replace(/&/g, '&amp;')
@@ -69,7 +70,7 @@ function esc(s) {
     .replace(/'/g, '&#39;')
 }
 
-async function sendResendMail({ from, to, subject, html, text }) {
+async function sendResendMail({ from, to, subject, html, text, replyTo }) {
   if (!resend) throw new Error('Email service not configured. Add RESEND_API_KEY.')
   const payload = {
     from,
@@ -78,35 +79,10 @@ async function sendResendMail({ from, to, subject, html, text }) {
     html,
     text,
   }
+  if (replyTo) payload.reply_to = replyTo
   const out = await resend.emails.send(payload)
   if (out?.error) throw new Error(out.error.message || 'Resend rejected the email request.')
   return out?.data?.id || null
-}
-
-let cachedNotifyRecipient = { email: DEFAULT_NEW_USER_NOTIFY_TO, fetchedAt: 0 }
-const NOTIFY_RECIPIENT_TTL_MS = 60_000
-
-async function getNewUserNotifyRecipient() {
-  const now = Date.now()
-  if (now - cachedNotifyRecipient.fetchedAt < NOTIFY_RECIPIENT_TTL_MS) {
-    return cachedNotifyRecipient.email
-  }
-  try {
-    const resp = await fetch(`${FIREBASE_DATABASE_URL}/adminPortal/emailWorkflow/newUserNotifyTo.json`, {
-      method: 'GET',
-    })
-    if (!resp.ok) throw new Error(`RTDB read failed: ${resp.status}`)
-    const raw = await resp.json()
-    const next = cleanEmail(raw)
-    cachedNotifyRecipient = {
-      email: next && next.includes('@') ? next : DEFAULT_NEW_USER_NOTIFY_TO,
-      fetchedAt: now,
-    }
-  } catch (err) {
-    console.warn('new-user notify recipient fallback:', err.message)
-    cachedNotifyRecipient = { email: DEFAULT_NEW_USER_NOTIFY_TO, fetchedAt: now }
-  }
-  return cachedNotifyRecipient.email
 }
 
 async function callGroq(systemPrompt, userPrompt, maxTokens = 1024) {
@@ -559,7 +535,7 @@ app.post('/api/notify-new-payment-request', async (req, res) => {
     if (!email || !email.includes('@')) {
       return res.status(400).json({ error: 'Valid user email is required.' })
     }
-    const notifyRecipient = await getNewUserNotifyRecipient()
+    const notifyRecipient = ADMIN_NOTIFY_EMAIL.includes('@') ? ADMIN_NOTIFY_EMAIL : 'hirefortune90@gmail.com'
     const refLine = upiReference ? `Payment reference: ${upiReference}` : 'Payment reference: Not provided'
     const couponLine = couponCode ? `Coupon code submitted: ${couponCode}` : 'Coupon code submitted: None'
     const subject = 'New JobRush user registration and payment request'
@@ -594,7 +570,9 @@ app.post('/api/notify-new-payment-request', async (req, res) => {
       subject,
       html,
       text,
+      replyTo: MAIL_REPLY_TO,
     })
+    console.log('[email] notify-new-payment-request', { to: notifyRecipient, subject, messageId })
     res.json({ ok: true, messageId, recipient: notifyRecipient })
   } catch (err) {
     console.error('notify-new-payment-request error:', err)
@@ -679,7 +657,9 @@ app.post('/api/admin/notify-payment-decision', requireAdminSecret, async (req, r
       subject,
       html,
       text,
+      replyTo: MAIL_REPLY_TO,
     })
+    console.log('[email] notify-payment-decision', { to: email, subject, messageId })
     res.json({ ok: true, messageId })
   } catch (err) {
     console.error('notify-payment-decision error:', err)
@@ -714,7 +694,9 @@ app.post('/api/admin/send-user-email', requireAdminSecret, async (req, res) => {
       subject,
       html,
       text,
+      replyTo: MAIL_REPLY_TO,
     })
+    console.log('[email] send-user-email', { to, subject, messageId })
     res.json({ ok: true, messageId, recipients: to.length })
   } catch (err) {
     console.error('send-user-email error:', err)
@@ -729,5 +711,6 @@ app.get('/api/health', (req, res) => {
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
   console.log(`JobRush API running on http://localhost:${PORT}`)
+  console.log(`[email] New-user/payment alerts → ${ADMIN_NOTIFY_EMAIL} (override with ADMIN_NOTIFY_EMAIL)`)
   if (!groq) console.warn('Warning: API key not set. AI features will return errors.')
 })

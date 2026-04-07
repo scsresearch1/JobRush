@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { EnvelopeIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
-import { getAdminCredentials, getNewUserNotifyEmail, setNewUserNotifyEmail } from '../services/adminDb'
+import { getAdminCredentials } from '../services/adminDb'
 
 /** Avoid stuck "Saving…" when Firebase never resolves. */
 function withTimeout(promise, ms, actionLabel) {
@@ -20,8 +20,6 @@ export default function SettingsEmail() {
   const [currentUsername, setCurrentUsername] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newEmail, setNewEmail] = useState('')
-  const [newUserNotifyTo, setNewUserNotifyTo] = useState('hirefortune90@gmail.com')
-  const [emailSaving, setEmailSaving] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   const [submitting, setSubmitting] = useState(false)
 
@@ -29,9 +27,8 @@ export default function SettingsEmail() {
     let cancelled = false
     ;(async () => {
       try {
-        const [creds, notifyTo] = await Promise.all([getAdminCredentials(), getNewUserNotifyEmail()])
+        const creds = await getAdminCredentials()
         if (!cancelled && creds?.username) setCurrentUsername(creds.username)
-        if (!cancelled && notifyTo) setNewUserNotifyTo(notifyTo)
       } catch {
         /* ignore */
       }
@@ -65,35 +62,13 @@ export default function SettingsEmail() {
     }
   }
 
-  const handleSaveNotifyRecipient = async (e) => {
-    e.preventDefault()
-    const candidate = String(newUserNotifyTo || '').trim().toLowerCase()
-    if (!candidate || !candidate.includes('@')) {
-      setMessage({ type: 'error', text: 'Enter a valid recipient email for new-user notifications.' })
-      return
-    }
-    setEmailSaving(true)
-    setMessage({ type: '', text: '' })
-    try {
-      await withTimeout(setNewUserNotifyEmail(candidate), 25000, 'Save new-user notification recipient')
-      setMessage({
-        type: 'ok',
-        text: `Saved. New user registration emails will be sent to ${candidate}.`,
-      })
-    } catch (err) {
-      setMessage({ type: 'error', text: err?.message || 'Could not save notification recipient.' })
-    } finally {
-      setEmailSaving(false)
-    }
-  }
-
   return (
     <div className="max-w-2xl space-y-10">
       <div>
         <h1 className="text-2xl font-bold text-white mb-2">Settings</h1>
         <p className="text-admin-300 text-sm mb-8">
-          Change your admin sign-in. Email workflow is active via Resend with fixed sender identities for onboarding,
-          approval, and reports.
+          Change your admin sign-in. Transactional email is sent via Resend from{' '}
+          <span className="text-admin-200">@fortunehire.in</span> addresses.
         </p>
 
         <div className="bg-admin-900/80 border border-admin-800 rounded-2xl p-6">
@@ -150,38 +125,21 @@ export default function SettingsEmail() {
         </div>
 
         <div className="bg-admin-900/80 border border-admin-800 rounded-2xl p-6 mt-6">
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-3 mb-4">
             <div className="p-2 rounded-lg bg-admin-800">
               <EnvelopeIcon className="w-6 h-6 text-admin-300" />
             </div>
             <div>
-              <h2 className="font-semibold text-white">New user registration notifications</h2>
-              <p className="text-xs text-admin-400">From: newuser@fortunehire.in · To: configurable admin inbox</p>
+              <h2 className="font-semibold text-white">New user / payment-request alerts</h2>
+              <p className="text-xs text-admin-400">From: newuser@fortunehire.in</p>
             </div>
           </div>
-
-          <form onSubmit={handleSaveNotifyRecipient} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-admin-200 mb-1.5">
-                Recipient email for new user registration
-              </label>
-              <input
-                type="email"
-                value={newUserNotifyTo}
-                onChange={(e) => setNewUserNotifyTo(e.target.value)}
-                placeholder="e.g. hirefortune90@gmail.com"
-                className="w-full px-4 py-2.5 rounded-xl bg-admin-950 border border-admin-600 text-white focus:ring-2 focus:ring-admin-500 focus:border-transparent placeholder:text-admin-600"
-                autoComplete="email"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={emailSaving || !newUserNotifyTo.trim()}
-              className="w-full py-3 rounded-xl bg-admin-600 hover:bg-admin-500 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition"
-            >
-              {emailSaving ? 'Saving…' : 'Save notification recipient'}
-            </button>
-          </form>
+          <p className="text-sm text-admin-300 leading-relaxed">
+            Admin notifications are delivered to{' '}
+            <span className="text-white font-medium">hirefortune90@gmail.com</span> by default. To use a different
+            inbox, set <code className="text-admin-400 text-xs">ADMIN_NOTIFY_EMAIL</code> on the API server (e.g.
+            Render environment) and redeploy. Check Spam and Promotions in Gmail if messages do not appear in Primary.
+          </p>
         </div>
       </div>
     </div>
