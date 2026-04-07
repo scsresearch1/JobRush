@@ -39,9 +39,9 @@ const DEFAULT_FIREBASE_RTDB_URL = 'https://jobrush-f2eb4-default-rtdb.asia-south
 const FIREBASE_DATABASE_URL = String(process.env.FIREBASE_DATABASE_URL || DEFAULT_FIREBASE_RTDB_URL).replace(/\/+$/, '')
 const DEFAULT_NEW_USER_NOTIFY_TO = 'hirefortune90@gmail.com'
 
-const MAIL_FROM_NEW_USER = 'JobRush Onboarding Team <NewUser@resend.dev>'
-const MAIL_FROM_WELCOME = 'JobRush Access Team <welcome_jobrush@resend.dev>'
-const MAIL_FROM_REPORTS = 'JobRush Reports Desk <reports_Jobrush@resend.dev>'
+const MAIL_FROM_NEW_USER = 'JobRush Onboarding Team <newuser@fortunehire.in>'
+const MAIL_FROM_WELCOME = 'JobRush Access Team <welcome@fortunehire.in>'
+const MAIL_FROM_REPORTS = 'JobRush Reports Desk <reports@fortunehire.in>'
 
 function requireAdminSecret(req, res, next) {
   if (!ADMIN_API_SECRET) {

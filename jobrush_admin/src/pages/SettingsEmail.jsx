@@ -156,7 +156,7 @@ export default function SettingsEmail() {
             </div>
             <div>
               <h2 className="font-semibold text-white">New user registration notifications</h2>
-              <p className="text-xs text-admin-400">From: NewUser@resend.dev · To: configurable admin inbox</p>
+              <p className="text-xs text-admin-400">From: newuser@fortunehire.in · To: configurable admin inbox</p>
             </div>
           </div>
 
