@@ -37,7 +37,7 @@ import {
   LightBulbIcon,
 } from '@heroicons/react/24/outline'
 import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
-import { getUser, incrementAtsCheckUsage, saveAtsReport, buildStorableAtsReport } from '../services/database.js'
+import { getUser } from '../services/database.js'
 import { USERDB_FIELDS } from '../config/databaseSchema.js'
 import { QUOTA_ATS_MAX } from '../utils/quotas.js'
 
@@ -112,29 +112,10 @@ const ATSAnalysis = () => {
         setEvaluation(result)
         if (uid && !String(uid).startsWith('local_')) {
           try {
-            const payload = buildStorableAtsReport(result)
-            if (payload) {
-              const dedupeKey = '_jrush_ats_persist'
-              let skip = false
-              try {
-                const prev = JSON.parse(sessionStorage.getItem(dedupeKey) || 'null')
-                const now = Date.now()
-                if (prev && prev.uid === uid && now - prev.t < 4000) skip = true
-              } catch {
-                /* ignore */
-              }
-              if (!skip) {
-                await saveAtsReport(uid, payload)
-                await incrementAtsCheckUsage(uid)
-                try {
-                  sessionStorage.setItem(dedupeKey, JSON.stringify({ uid, t: Date.now() }))
-                } catch {
-                  /* ignore */
-                }
-              }
-            }
+            // Mark ATS as "checked"; usage is consumed only after at least one AI correction is applied.
+            sessionStorage.setItem('_jrush_ats_pending', JSON.stringify({ uid, t: Date.now() }))
           } catch {
-            /* offline or rules — evaluation still shown */
+            /* ignore */
           }
         }
       }

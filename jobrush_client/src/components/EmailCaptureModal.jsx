@@ -15,11 +15,11 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
     setError('')
 
     if (!email.trim()) {
-      setError('Please enter your email')
+      setError('Please enter your email address.')
       return
     }
     if (!/\S+@\S+\.\S+/.test(email)) {
-      setError('Please enter a valid email address')
+      setError('Please enter a valid email address (for example: name@example.com).')
       return
     }
 
@@ -32,7 +32,7 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
         existing = await getUserByEmail(normalizedEmail)
       } catch (lookupErr) {
         console.error('Firebase lookup failed:', lookupErr)
-        setError('Could not reach Firebase. Check .env.local (see .env.example).')
+          setError('We could not connect to our user database. Please try again in a moment.')
         setIsLoading(false)
         return
       }
@@ -69,7 +69,7 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
         })
       } catch (firebaseErr) {
         console.error('Firebase save failed:', firebaseErr)
-        setError('Could not save to Firebase. Add your web config to .env.local (see .env.example)')
+        setError('We could not save your details right now. Please retry in a few moments.')
         setIsLoading(false)
         return
       }
@@ -87,7 +87,7 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
       onClose()
     } catch (err) {
       console.error(err)
-      setError('Something went wrong. Please try again.')
+      setError('Something went wrong while processing your request. Please try again.')
     } finally {
       setIsLoading(false)
     }

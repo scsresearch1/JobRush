@@ -61,6 +61,37 @@ const COLLECTION_STRUCTURE = {
     fields: ['userId', 'report', 'generatedAt'],
     seedDocuments: [],
   },
+  coupons: {
+    description: 'Coupon master records managed by admin portal.',
+    fields: [
+      'couponCode',
+      'contractName',
+      'discountAmount',
+      'contractPaymentPerUser',
+      'validityDays',
+      'validUntil',
+      'isActive',
+      'createdAt',
+      'updatedAt',
+    ],
+    seedDocuments: [],
+  },
+  couponRedemptions: {
+    description:
+      'Verified coupon usage aggregates updated only after admin payment approval.',
+    fields: [
+      'couponCode',
+      'contractName',
+      'discountAmount',
+      'contractPaymentPerUser',
+      'timesUsedVerified',
+      'totalAmountCollected',
+      'totalContractPayout',
+      'verifiedUsers',
+      'updatedAt',
+    ],
+    seedDocuments: [],
+  },
   adminPortal: {
     description:
       'JobRush admin portal (jadm): credentials, paymentQr. Lock down RTDB rules appropriately.',

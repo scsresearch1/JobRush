@@ -7,9 +7,12 @@ import {
   USERDB_FIELDS,
   INTERVIEW_REPORTS_FIELDS,
   ATS_REPORT_FIELDS,
+  COUPON_FIELDS,
+  COUPON_REDEMPTION_FIELDS,
 } from '../config/schema'
 
 const MAX_QR_DATA_URL_CHARS = 450_000
+const PLAN_AMOUNT_INR = 250
 
 /** Users counted as online if lastSeenAt is within this window */
 export const ONLINE_PRESENCE_WINDOW_MS = 3 * 60 * 1000
@@ -88,6 +91,33 @@ export function atsReportsRef() {
 
 export function atsReportRef(reportId) {
   return ref(database, `${COLLECTIONS.ATS_REPORTS}/${reportId}`)
+}
+
+export function couponsRef() {
+  return ref(database, COLLECTIONS.COUPONS)
+}
+
+export function couponRef(couponCode) {
+  return ref(database, `${COLLECTIONS.COUPONS}/${couponCode}`)
+}
+
+export function couponRedemptionsRef() {
+  return ref(database, COLLECTIONS.COUPON_REDEMPTIONS)
+}
+
+export function couponRedemptionRef(couponCode) {
+  return ref(database, `${COLLECTIONS.COUPON_REDEMPTIONS}/${couponCode}`)
+}
+
+function normalizeCouponCode(code) {
+  return String(code || '').trim().toUpperCase()
+}
+
+function assertValidCouponCode(code) {
+  if (!code) throw new Error('Coupon name is required.')
+  if (!/^[A-Z0-9_-]{3,32}$/.test(code)) {
+    throw new Error('Coupon name must be 3-32 characters and use only letters, numbers, "_" or "-".')
+  }
 }
 
 export function adminCredentialsRef() {
@@ -225,6 +255,143 @@ export async function deleteUser(uniqueId) {
  */
 export async function updateUserRecord(uniqueId, patch) {
   await update(userRef(uniqueId), patch)
+}
+
+export async function listCoupons() {
+  const snapshot = await get(couponsRef())
+  if (!snapshot.exists()) return []
+  const val = snapshot.val()
+  return Object.entries(val)
+    .filter(([k]) => k !== '_schema')
+    .map(([id, data]) => ({ id, ...data }))
+    .filter((r) => r?.[COUPON_FIELDS.COUPON_CODE])
+}
+
+export async function createCoupon({
+  couponCode,
+  contractName,
+  discountAmount,
+  contractPaymentPerUser,
+  validityDays,
+}) {
+  const code = normalizeCouponCode(couponCode)
+  assertValidCouponCode(code)
+  const contract = String(contractName || '').trim()
+  if (!contract) throw new Error('Contract name is required.')
+  const discount = Number(discountAmount)
+  if (!Number.isFinite(discount) || discount < 0) throw new Error('Discount amount must be 0 or more.')
+  if (discount > PLAN_AMOUNT_INR) throw new Error(`Discount cannot exceed plan amount (₹${PLAN_AMOUNT_INR}).`)
+  const payoutPerUser = Number(contractPaymentPerUser)
+  if (!Number.isFinite(payoutPerUser) || payoutPerUser < 0) {
+    throw new Error('Contract payment per user must be 0 or more.')
+  }
+  const days = Math.max(1, Math.floor(Number(validityDays) || 0))
+  if (!days) throw new Error('Validity must be at least 1 day.')
+  if (days > 3650) throw new Error('Validity cannot exceed 3650 days.')
+
+  const now = new Date()
+  const validUntil = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString()
+  const existing = await get(couponRef(code))
+  if (existing.exists()) throw new Error(`Coupon ${code} already exists.`)
+
+  await set(couponRef(code), {
+    [COUPON_FIELDS.COUPON_CODE]: code,
+    [COUPON_FIELDS.CONTRACT_NAME]: contract,
+    [COUPON_FIELDS.DISCOUNT_AMOUNT]: discount,
+    [COUPON_FIELDS.CONTRACT_PAYMENT_PER_USER]: payoutPerUser,
+    [COUPON_FIELDS.VALIDITY_DAYS]: days,
+    [COUPON_FIELDS.VALID_UNTIL]: validUntil,
+    [COUPON_FIELDS.IS_ACTIVE]: true,
+    [COUPON_FIELDS.CREATED_AT]: now.toISOString(),
+    [COUPON_FIELDS.UPDATED_AT]: now.toISOString(),
+  })
+}
+
+export async function setCouponActiveState(couponCode, isActive) {
+  const code = normalizeCouponCode(couponCode)
+  assertValidCouponCode(code)
+  const snap = await get(couponRef(code))
+  if (!snap.exists()) throw new Error(`Coupon ${code} not found.`)
+  await update(couponRef(code), {
+    [COUPON_FIELDS.IS_ACTIVE]: Boolean(isActive),
+    [COUPON_FIELDS.UPDATED_AT]: new Date().toISOString(),
+  })
+}
+
+export async function listCouponStatuses() {
+  const [coupons, redemptionsSnap] = await Promise.all([listCoupons(), get(couponRedemptionsRef())])
+  const redemptionRows = redemptionsSnap.exists() ? redemptionsSnap.val() : {}
+  const byCode = Object.fromEntries(
+    coupons.map((c) => [normalizeCouponCode(c[COUPON_FIELDS.COUPON_CODE]), c])
+  )
+
+  const merged = coupons.map((c) => {
+    const code = normalizeCouponCode(c[COUPON_FIELDS.COUPON_CODE])
+    const r = redemptionRows?.[code] || {}
+    return {
+      couponCode: code,
+      contractName: c[COUPON_FIELDS.CONTRACT_NAME] || '—',
+      timesUsedVerified: Number(r?.[COUPON_REDEMPTION_FIELDS.TIMES_USED_VERIFIED]) || 0,
+      totalAmountCollected: Number(r?.[COUPON_REDEMPTION_FIELDS.TOTAL_AMOUNT_COLLECTED]) || 0,
+      totalContractPayout: Number(r?.[COUPON_REDEMPTION_FIELDS.TOTAL_CONTRACT_PAYOUT]) || 0,
+    }
+  })
+
+  for (const [k, v] of Object.entries(redemptionRows || {})) {
+    if (k === '_schema' || byCode[k]) continue
+    merged.push({
+      couponCode: k,
+      contractName: v?.[COUPON_REDEMPTION_FIELDS.CONTRACT_NAME] || '—',
+      timesUsedVerified: Number(v?.[COUPON_REDEMPTION_FIELDS.TIMES_USED_VERIFIED]) || 0,
+      totalAmountCollected: Number(v?.[COUPON_REDEMPTION_FIELDS.TOTAL_AMOUNT_COLLECTED]) || 0,
+      totalContractPayout: Number(v?.[COUPON_REDEMPTION_FIELDS.TOTAL_CONTRACT_PAYOUT]) || 0,
+    })
+  }
+
+  return merged.sort((a, b) => a.couponCode.localeCompare(b.couponCode))
+}
+
+/**
+ * Records coupon usage only after admin verifies payment.
+ */
+export async function recordCouponRedemptionFromApproval(userRow) {
+  const uid = String(userRow?.id || '').trim()
+  if (!uid) return
+  const rawCode = userRow?.[USERDB_FIELDS.COUPON_CODE_PENDING]
+  const code = normalizeCouponCode(rawCode)
+  if (!code) return
+
+  const couponSnap = await get(couponRef(code))
+  if (!couponSnap.exists()) return
+  const coupon = couponSnap.val() || {}
+  const discount = Math.max(0, Number(coupon?.[COUPON_FIELDS.DISCOUNT_AMOUNT]) || 0)
+  const payoutPerUser = Math.max(0, Number(coupon?.[COUPON_FIELDS.CONTRACT_PAYMENT_PER_USER]) || 0)
+  const amountCollected = Math.max(0, PLAN_AMOUNT_INR - discount)
+
+  const statusSnap = await get(couponRedemptionRef(code))
+  const prev = statusSnap.exists() ? statusSnap.val() : {}
+  const verifiedUsers = { ...(prev?.[COUPON_REDEMPTION_FIELDS.VERIFIED_USERS] || {}) }
+  if (verifiedUsers[uid] === true) return
+  verifiedUsers[uid] = true
+
+  const times = (Number(prev?.[COUPON_REDEMPTION_FIELDS.TIMES_USED_VERIFIED]) || 0) + 1
+  const totalAmount =
+    (Number(prev?.[COUPON_REDEMPTION_FIELDS.TOTAL_AMOUNT_COLLECTED]) || 0) + amountCollected
+  const totalPayout =
+    (Number(prev?.[COUPON_REDEMPTION_FIELDS.TOTAL_CONTRACT_PAYOUT]) || 0) + payoutPerUser
+
+  await set(couponRedemptionRef(code), {
+    [COUPON_REDEMPTION_FIELDS.COUPON_CODE]: code,
+    [COUPON_REDEMPTION_FIELDS.CONTRACT_NAME]:
+      coupon?.[COUPON_FIELDS.CONTRACT_NAME] || prev?.[COUPON_REDEMPTION_FIELDS.CONTRACT_NAME] || '—',
+    [COUPON_REDEMPTION_FIELDS.DISCOUNT_AMOUNT]: discount,
+    [COUPON_REDEMPTION_FIELDS.CONTRACT_PAYMENT_PER_USER]: payoutPerUser,
+    [COUPON_REDEMPTION_FIELDS.TIMES_USED_VERIFIED]: times,
+    [COUPON_REDEMPTION_FIELDS.TOTAL_AMOUNT_COLLECTED]: totalAmount,
+    [COUPON_REDEMPTION_FIELDS.TOTAL_CONTRACT_PAYOUT]: totalPayout,
+    [COUPON_REDEMPTION_FIELDS.VERIFIED_USERS]: verifiedUsers,
+    [COUPON_REDEMPTION_FIELDS.UPDATED_AT]: new Date().toISOString(),
+  })
 }
 
 export async function deleteInterviewReport(reportId) {

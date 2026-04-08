@@ -3,15 +3,17 @@ import { XMarkIcon } from '@heroicons/react/24/outline'
 
 export default function PaymentReviewModal({ open, row, email, paymentReference, onClose, onDecision }) {
   const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
   if (!open || !row) return null
 
   const run = async (decision) => {
+    setMessage('')
     setBusy(true)
     try {
       await onDecision(decision)
       onClose()
     } catch (e) {
-      window.alert(e?.message || 'Action failed')
+      setMessage(e?.message || 'Could not complete this action. Please try again.')
     } finally {
       setBusy(false)
     }
@@ -44,6 +46,7 @@ export default function PaymentReviewModal({ open, row, email, paymentReference,
           <p className="text-xs text-admin-500 mb-1">Payment reference</p>
           <p className="font-mono text-sm text-admin-100 break-all">{paymentReference || '—'}</p>
         </div>
+        {message && <p className="text-sm text-red-400 mb-4">{message}</p>}
         <div className="flex flex-col sm:flex-row gap-3">
           <button
             type="button"

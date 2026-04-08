@@ -4,6 +4,8 @@ export const COLLECTIONS = {
   INTERVIEW_REPORTS: 'interviewReports',
   ATS_REPORTS: 'atsReports',
   ADMIN_PORTAL: 'adminPortal',
+  COUPONS: 'coupons',
+  COUPON_REDEMPTIONS: 'couponRedemptions',
 }
 
 export const ADMIN_PORTAL_KEYS = {
@@ -56,4 +58,28 @@ export const ATS_REPORT_FIELDS = {
   USER_ID: 'userId',
   REPORT: 'report',
   GENERATED_AT: 'generatedAt',
+}
+
+export const COUPON_FIELDS = {
+  COUPON_CODE: 'couponCode',
+  CONTRACT_NAME: 'contractName',
+  DISCOUNT_AMOUNT: 'discountAmount',
+  CONTRACT_PAYMENT_PER_USER: 'contractPaymentPerUser',
+  VALIDITY_DAYS: 'validityDays',
+  VALID_UNTIL: 'validUntil',
+  IS_ACTIVE: 'isActive',
+  CREATED_AT: 'createdAt',
+  UPDATED_AT: 'updatedAt',
+}
+
+export const COUPON_REDEMPTION_FIELDS = {
+  COUPON_CODE: 'couponCode',
+  CONTRACT_NAME: 'contractName',
+  DISCOUNT_AMOUNT: 'discountAmount',
+  CONTRACT_PAYMENT_PER_USER: 'contractPaymentPerUser',
+  TIMES_USED_VERIFIED: 'timesUsedVerified',
+  TOTAL_AMOUNT_COLLECTED: 'totalAmountCollected',
+  TOTAL_CONTRACT_PAYOUT: 'totalContractPayout',
+  VERIFIED_USERS: 'verifiedUsers',
+  UPDATED_AT: 'updatedAt',
 }

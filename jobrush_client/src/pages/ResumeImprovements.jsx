@@ -12,6 +12,8 @@ import DownloadResumeModal from '../components/DownloadResumeModal.jsx'
 import { getRecommendations, applyCorrection, pingHealth } from '../services/groqService.js'
 import { evaluateResume } from '../ats/index.js'
 import { getDisplayLines } from '../utils/cleanAiText.js'
+import { buildStorableAtsReport, getUser, incrementAtsCheckUsage, saveAtsReport } from '../services/database.js'
+import { USERDB_FIELDS } from '../config/databaseSchema.js'
 
 const FALLBACK_RECOMMENDATIONS = [
   { section: 'Skills', current: 'Review your skills section', suggestion: 'Add ATS-targeted keywords from job descriptions', impact: 'High' },
@@ -67,6 +69,56 @@ const ResumeImprovements = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(modified))
   }
 
+  const consumePendingAtsUsage = async (resumeForUsage) => {
+    let user = {}
+    try {
+      user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
+    } catch {
+      user = {}
+    }
+    const uid = user?.uniqueId
+    if (!uid || String(uid).startsWith('local_')) return
+
+    let pending = null
+    try {
+      pending = JSON.parse(sessionStorage.getItem('_jrush_ats_pending') || 'null')
+    } catch {
+      pending = null
+    }
+    if (!pending || pending.uid !== uid) return
+
+    const evaluation = evaluateResume(resumeForUsage)
+    const payload = buildStorableAtsReport(evaluation)
+    if (payload) {
+      await saveAtsReport(uid, payload)
+    }
+    await incrementAtsCheckUsage(uid)
+    try {
+      const latest = await getUser(uid)
+      if (latest) {
+        const raw = localStorage.getItem('jobRush_user')
+        const prior = raw ? JSON.parse(raw) : {}
+        localStorage.setItem(
+          'jobRush_user',
+          JSON.stringify({
+            ...prior,
+            accessStatus: latest[USERDB_FIELDS.ACCESS_STATUS] || prior.accessStatus,
+            atsChecksUsed: Number(latest[USERDB_FIELDS.ATS_CHECKS_USED]) || prior.atsChecksUsed || 0,
+            mockInterviewsUsed:
+              Number(latest[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || prior.mockInterviewsUsed || 0,
+          })
+        )
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      sessionStorage.removeItem('_jrush_ats_pending')
+    } catch {
+      /* ignore */
+    }
+  }
+
   const handleApply = async (index) => {
     if (!resume || applied[index] || applying != null) return
     setApplying(index)
@@ -76,6 +128,7 @@ const ResumeImprovements = () => {
       const { resume: modified } = await applyCorrection(resume, recommendations[index])
       saveResume(modified)
       setApplied((prev) => ({ ...prev, [index]: true }))
+      await consumePendingAtsUsage(modified)
     } catch (err) {
       setApplyError(err.message)
     } finally {
@@ -101,6 +154,7 @@ const ResumeImprovements = () => {
         setApplied((prev) => ({ ...prev, [index]: true }))
       }
       saveResume(current)
+      await consumePendingAtsUsage(current)
     } catch (err) {
       setApplyError(err.message)
     } finally {

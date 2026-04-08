@@ -9,9 +9,12 @@ import {
   ArrowRightIcon,
 } from '@heroicons/react/24/outline'
 import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
+import { QUOTA_ATS_MAX, QUOTA_MOCK_MAX } from '../utils/quotas.js'
 
-const Dashboard = () => {
+const Dashboard = ({ onQuotaReached }) => {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
+  const atsUsed = Number(user?.atsChecksUsed) || 0
+  const mockUsed = Number(user?.mockInterviewsUsed) || 0
 
   const features = [
     {
@@ -27,6 +30,8 @@ const Dashboard = () => {
       title: 'ATS Compatibility Score',
       description: `Evaluate your resume against ${MASS_HIRING_PROFILES.length} mass hiring companies and 10 universities. Get detailed analysis.`,
       color: 'from-indigo-500 to-purple-500',
+      quotaReached: atsUsed >= QUOTA_ATS_MAX,
+      quotaType: 'ats',
     },
     {
       to: '/resume-improvements',
@@ -48,6 +53,8 @@ const Dashboard = () => {
       title: 'AI HR Mock Interview',
       description: 'Practice with AI-powered HR interviews. Record responses and get performance analysis.',
       color: 'from-rose-500 to-pink-500',
+      quotaReached: mockUsed >= QUOTA_MOCK_MAX,
+      quotaType: 'mock',
     },
   ]
 
@@ -66,7 +73,12 @@ const Dashboard = () => {
         {features.map((feature) => (
           <Link
             key={feature.to}
-            to={feature.to}
+            to={feature.quotaReached ? '#' : feature.to}
+            onClick={(e) => {
+              if (!feature.quotaReached) return
+              e.preventDefault()
+              onQuotaReached?.(feature.quotaType)
+            }}
             className="group bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-primary-200 hover:-translate-y-1"
           >
             <div
@@ -79,7 +91,7 @@ const Dashboard = () => {
             </h3>
             <p className="text-gray-600 text-sm mb-4">{feature.description}</p>
             <span className="inline-flex items-center text-primary-600 font-medium text-sm group-hover:gap-2 transition-all">
-              Get Started
+              {feature.quotaReached ? 'Quota completed - Pay again' : 'Get Started'}
               <ArrowRightIcon className="w-4 h-4 ml-1 group-hover:ml-2 transition-all" />
             </span>
           </Link>

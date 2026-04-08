@@ -62,11 +62,11 @@ const ResumeUpload = () => {
     const droppedFile = e.dataTransfer.files[0]
     if (!droppedFile) return
     if (!isAcceptedFile(droppedFile)) {
-      setError('Please upload a PDF or DOCX file')
+      setError('Unsupported file type. Please upload a PDF or DOCX resume.')
       return
     }
     if (droppedFile.size > 5 * 1024 * 1024) {
-      setError('File size must be under 5 MB')
+      setError('File size exceeds 5 MB. Please upload a smaller file.')
       return
     }
     setFile(droppedFile)
@@ -77,11 +77,11 @@ const ResumeUpload = () => {
     const selectedFile = e.target.files[0]
     if (selectedFile) {
       if (!isAcceptedFile(selectedFile)) {
-        setError('Please upload a PDF or DOCX file')
+        setError('Unsupported file type. Please upload a PDF or DOCX resume.')
         return
       }
       if (selectedFile.size > 5 * 1024 * 1024) {
-        setError('File size must be under 5 MB')
+        setError('File size exceeds 5 MB. Please upload a smaller file.')
         return
       }
       setFile(selectedFile)

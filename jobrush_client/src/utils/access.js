@@ -8,6 +8,7 @@ export function hasAppAccess(user) {
   if (!user || typeof user !== 'object') return false
   if (user.suspended === true) return false
   if (user.accessStatus === 'active') return true
+  if (user.accessStatus === 'suspended') return true
   if (user.isAuthenticated === true && user.accessStatus == null) return true
   return false
 }

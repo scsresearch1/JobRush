@@ -12,6 +12,14 @@
       ".read": true,
       ".write": true
     },
+    "coupons": {
+      ".read": true,
+      ".write": true
+    },
+    "couponRedemptions": {
+      ".read": true,
+      ".write": true
+    },
     "adminPortal": {
       "credentials": {
         ".read": true,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { fetchPaymentQrImageUrlFromFirebase } from '../services/paymentQrFirebase.js'
+import { fetchCouponFromFirebase, fetchPaymentQrImageUrlFromFirebase } from '../services/paymentQrFirebase.js'
 import { resolvePaymentQrFallbackSrc } from '../config/paymentQr.js'
 import { syncUserFieldsToFirebase } from '../services/database.js'
 import { notifyNewPaymentRequest } from '../services/groqService.js'
@@ -12,7 +12,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline'
 
-const PLAN_AMOUNT_INR = 500
+const PLAN_AMOUNT_INR = 250
 const RESUME_CORRECTIONS = 5
 const MOCK_INTERVIEWS = 5
 
@@ -25,6 +25,8 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
   const [step, setStep] = useState('offer')
   const [couponCode, setCouponCode] = useState('')
   const [couponNotice, setCouponNotice] = useState('')
+  const [couponApplying, setCouponApplying] = useState(false)
+  const [appliedCoupon, setAppliedCoupon] = useState(null)
   const [upiReference, setUpiReference] = useState('')
   const [refError, setRefError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -50,6 +52,8 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
     if (!isOpen) return
     setStep(initialStep)
     setCouponNotice('')
+    setAppliedCoupon(null)
+    setCouponApplying(false)
     setRefError('')
     setSubmitting(false)
     if (initialStep === 'offer') {
@@ -85,22 +89,64 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
   }
 
   const handleApplyCoupon = () => {
-    setCouponNotice(
-      couponCode.trim()
-        ? 'Coupon validation will be applied when your billing integration is connected. You may continue with payment.'
-        : 'Enter a code above, or continue without a coupon.'
-    )
+    const run = async () => {
+      const code = couponCode.trim().toUpperCase()
+      if (!code) {
+        setAppliedCoupon(null)
+        setCouponNotice('Enter a valid coupon code to continue.')
+        return
+      }
+      setCouponApplying(true)
+      setCouponNotice('')
+      try {
+        const out = await fetchCouponFromFirebase(code)
+        if (!out?.ok) {
+          setAppliedCoupon(null)
+          const reason = out?.reason
+          if (reason === 'inactive') {
+            setCouponNotice('This coupon is currently inactive.')
+          } else if (reason === 'expired') {
+            setCouponNotice('This coupon has expired.')
+          } else {
+            setCouponNotice('Coupon code is invalid.')
+          }
+          return
+        }
+        const coupon = out.coupon
+        setAppliedCoupon(coupon)
+        if ((Number(coupon?.discountAmount) || 0) <= 0) {
+          setCouponNotice('Coupon is valid, but no discount is configured for this contract.')
+        } else {
+          setCouponNotice(
+            `Coupon applied successfully${coupon.contractName ? ` (${coupon.contractName})` : ''}.`
+          )
+        }
+      } catch {
+        setAppliedCoupon(null)
+        setCouponNotice('Could not validate coupon right now. Please try again.')
+      } finally {
+        setCouponApplying(false)
+      }
+    }
+    run()
   }
 
   const handlePaymentDone = () => {
     setStep('reference')
   }
 
+  const effectiveDiscount = Math.min(
+    PLAN_AMOUNT_INR,
+    Math.max(0, Number(appliedCoupon?.discountAmount) || 0)
+  )
+  const payableAmount = Math.max(0, PLAN_AMOUNT_INR - effectiveDiscount)
+
   const handleRequestAccess = async (e) => {
     e?.preventDefault?.()
     const ref = upiReference.trim()
-    if (ref.length < 6) {
-      setRefError('Please enter a valid UPI or bank reference number (at least 6 characters).')
+    const utr = ref.replace(/\s+/g, '')
+    if (!/^\d{12}$/.test(utr)) {
+      setRefError('Please enter a valid 12-digit UTR number from your UPI payment confirmation.')
       return
     }
     setRefError('')
@@ -109,7 +155,7 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
       const patch = {
         accessStatus: 'awaiting_activation',
         paymentReference: ref,
-        couponCodePending: couponCode.trim() || null,
+        couponCodePending: appliedCoupon?.couponCode || null,
         accessRequestedAt: new Date().toISOString(),
         isAuthenticated: false,
       }
@@ -117,12 +163,12 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
       appendAccessRequestLog({
         email,
         upiReference: ref,
-        couponCode: couponCode.trim() || null,
+        couponCode: appliedCoupon?.couponCode || null,
       })
       notifyNewPaymentRequest({
         email,
         upiReference: ref,
-        couponCode: couponCode.trim() || null,
+        couponCode: appliedCoupon?.couponCode || null,
         requestedAt: patch.accessRequestedAt,
       }).catch(() => {})
       setStep('confirmation')
@@ -220,12 +266,10 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
                 </p>
                 <ul className="text-sm text-slate-700 space-y-2 list-disc list-inside marker:text-primary-500">
                   <li>
-                    <span className="font-medium text-slate-900">{RESUME_CORRECTIONS}</span> AI-assisted resume
-                    correction sessions
+                    <span className="font-medium text-slate-900">5</span> AI-assisted resume correction sessions
                   </li>
                   <li>
-                    <span className="font-medium text-slate-900">{MOCK_INTERVIEWS}</span> AI mock interview
-                    sessions
+                    <span className="font-medium text-slate-900">5</span> AI mock interview sessions
                   </li>
                 </ul>
                 <p className="text-xs text-slate-500 mt-4 leading-relaxed">
@@ -235,6 +279,9 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
               </div>
 
               <div>
+                <p className="text-sm font-semibold text-slate-900 mb-2">
+                  Amount before coupon: ₹{PLAN_AMOUNT_INR.toLocaleString('en-IN')}
+                </p>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Coupon code (optional)</label>
                 <div className="flex gap-2">
                   <input
@@ -243,6 +290,7 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
                     onChange={(e) => {
                       setCouponCode(e.target.value)
                       setCouponNotice('')
+                      setAppliedCoupon(null)
                     }}
                     placeholder="Enter code if you have one"
                     className="flex-1 min-w-0 px-4 py-2.5 rounded-lg border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-primary-200 focus:border-primary-500 outline-none text-sm"
@@ -251,15 +299,25 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
                   <button
                     type="button"
                     onClick={handleApplyCoupon}
-                    className="shrink-0 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+                    disabled={couponApplying}
+                    className="shrink-0 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition disabled:opacity-60"
                   >
-                    Apply
+                    {couponApplying ? 'Applying…' : 'Apply'}
                   </button>
                 </div>
-                {couponNotice && <p className="mt-2 text-xs text-slate-600">{couponNotice}</p>}
+                {couponNotice && (
+                  <p
+                    className={`mt-2 text-xs ${appliedCoupon ? 'text-emerald-700' : 'text-slate-600'}`}
+                  >
+                    {couponNotice}
+                  </p>
+                )}
               </div>
 
               <div className="rounded-xl border border-slate-200 p-5 text-center">
+                <p className="text-sm font-semibold text-slate-900 mb-3">
+                  Amount to pay: ₹{payableAmount.toLocaleString('en-IN')}
+                </p>
                 <div className="flex items-center justify-center gap-2 text-slate-800 font-medium text-sm mb-4">
                   <QrCodeIcon className="w-5 h-5 text-primary-600" />
                   Scan to pay with UPI
@@ -273,7 +331,7 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
                 </div>
                 <p className="text-xs text-slate-500 mt-4 max-w-xs mx-auto leading-relaxed">
                   Open PhonePe or any UPI app, scan the code, and pay exactly ₹
-                  {PLAN_AMOUNT_INR.toLocaleString('en-IN')}. Enter the amount manually if your app does not pre-fill it.
+                  {payableAmount.toLocaleString('en-IN')}. Enter the amount manually if your app does not pre-fill it.
                   Keep your transaction reference for the next step.
                 </p>
               </div>
@@ -297,7 +355,7 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
               </p>
               <div>
                 <label htmlFor="upi-ref" className="block text-sm font-medium text-slate-700 mb-2">
-                  Payment reference number
+                  UTR number
                 </label>
                 <input
                   id="upi-ref"
@@ -308,7 +366,7 @@ const PaymentAccessModal = ({ isOpen, onClose, email, initialStep = 'offer', mod
                     setUpiReference(e.target.value)
                     setRefError('')
                   }}
-                  placeholder="e.g. UPI transaction ID or bank reference"
+                  placeholder="Enter your 12-digit UTR (numbers only)"
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-primary-200 focus:border-primary-500 outline-none text-sm font-mono"
                   autoComplete="off"
                 />

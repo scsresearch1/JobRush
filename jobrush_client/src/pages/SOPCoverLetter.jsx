@@ -41,6 +41,25 @@ const SOPCoverLetter = () => {
       setError('Upload and parse your resume first on the Resume Upload page.')
       return
     }
+    if (type === 'cover-letter') {
+      if (!targetRole.trim()) {
+        setError('Please enter the target role for the cover letter.')
+        return
+      }
+      if (!targetCompany.trim()) {
+        setError('Please enter the target company for the cover letter.')
+        return
+      }
+    } else {
+      if (!targetProgram.trim()) {
+        setError('Please enter the target program or degree for the SOP.')
+        return
+      }
+      if (!targetCompany.trim()) {
+        setError('Please enter the target university for the SOP.')
+        return
+      }
+    }
     setIsGenerating(true)
     setGenerated(null)
     setError(null)
@@ -62,7 +81,9 @@ const SOPCoverLetter = () => {
 
   const handleCopy = () => {
     if (generated) {
-      navigator.clipboard.writeText(generated)
+      navigator.clipboard.writeText(generated).catch(() => {
+        setError('Could not copy to clipboard. Please copy the text manually.')
+      })
     }
   }
 

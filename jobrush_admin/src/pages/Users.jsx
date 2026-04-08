@@ -7,7 +7,7 @@ import {
   CheckBadgeIcon,
   NoSymbolIcon,
 } from '@heroicons/react/24/outline'
-import { listUsers, deleteUser, updateUserRecord } from '../services/adminDb'
+import { listUsers, deleteUser, updateUserRecord, recordCouponRedemptionFromApproval } from '../services/adminDb'
 import { USERDB_FIELDS } from '../config/schema'
 import { formatTimestampIST } from '../utils/formatIst'
 import PaymentReviewModal from '../components/PaymentReviewModal'
@@ -21,6 +21,9 @@ function deriveStatus(row) {
     return { key: 'suspended', label: 'Suspended', tone: 'text-red-300 bg-red-950/40 ring-red-800/50' }
   }
   const a = row[USERDB_FIELDS.ACCESS_STATUS]
+  if (a === 'suspended') {
+    return { key: 'suspended', label: 'Suspended', tone: 'text-red-300 bg-red-950/40 ring-red-800/50' }
+  }
   if (a === 'awaiting_activation') {
     return {
       key: 'awaiting_verification',
@@ -129,17 +132,20 @@ export default function Users() {
       const patch = {
         [USERDB_FIELDS.ACCESS_STATUS]: 'active',
         [USERDB_FIELDS.SUSPENDED]: false,
+        [USERDB_FIELDS.COUPON_CODE_PENDING]: null,
       }
       if (renewalCycle) {
         patch[USERDB_FIELDS.ATS_CHECKS_USED] = 0
         patch[USERDB_FIELDS.MOCK_INTERVIEWS_USED] = 0
       }
       await updateUserRecord(uid, patch)
+      await recordCouponRedemptionFromApproval(row)
     } else {
       await updateUserRecord(uid, {
         [USERDB_FIELDS.ACCESS_STATUS]: 'pending_payment',
         [USERDB_FIELDS.PAYMENT_REFERENCE]: null,
         [USERDB_FIELDS.ACCESS_REQUESTED_AT]: null,
+        [USERDB_FIELDS.COUPON_CODE_PENDING]: null,
       })
     }
 

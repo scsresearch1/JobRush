@@ -26,6 +26,14 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (!username.trim()) {
+      setError('Please enter your admin username.')
+      return
+    }
+    if (!password) {
+      setError('Please enter your admin password.')
+      return
+    }
     setSubmitting(true)
     const result = await login(username, password)
     setSubmitting(false)

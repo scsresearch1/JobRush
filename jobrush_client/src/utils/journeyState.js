@@ -37,6 +37,7 @@ export function computePostEmailFlow(firebaseRow) {
   if (accessStatus === 'pending_payment' || accessStatus == null || accessStatus === '') {
     return { kind: 'payment_offer' }
   }
+  if (accessStatus === 'suspended') return { kind: 'repayment' }
   if (accessStatus === 'active') {
     if (ats >= QUOTA_ATS_MAX && mock >= QUOTA_MOCK_MAX) return { kind: 'repayment' }
     return { kind: 'app' }
@@ -61,6 +62,9 @@ export function computeStartJourneyFlow(user) {
   }
   if (user.accessStatus === 'awaiting_activation' && user.email) {
     return { kind: 'payment_confirmation', email: user.email }
+  }
+  if (user.accessStatus === 'suspended' && user.email) {
+    return { kind: 'repayment', email: user.email }
   }
   if (user.accessStatus === 'pending_payment' && user.email) {
     return { kind: 'payment_offer', email: user.email }

@@ -13,6 +13,18 @@ export default function SettingsPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setMessage({ type: '', text: '' })
+    if (!currentPassword) {
+      setMessage({ type: 'error', text: 'Please enter your current password.' })
+      return
+    }
+    if (!newPassword) {
+      setMessage({ type: 'error', text: 'Please enter a new password.' })
+      return
+    }
+    if (newPassword.length < 8) {
+      setMessage({ type: 'error', text: 'New password must be at least 8 characters.' })
+      return
+    }
     if (newPassword !== confirmPassword) {
       setMessage({ type: 'error', text: 'New password and confirmation do not match.' })
       return

@@ -48,6 +48,7 @@ export default function Reports() {
   const [query, setQuery] = useState('')
   const [busyUserId, setBusyUserId] = useState(null)
   const [modal, setModal] = useState({ open: false, row: null })
+  const [message, setMessage] = useState({ type: '', text: '' })
 
   const load = useCallback(async () => {
     setError(null)
@@ -95,8 +96,12 @@ export default function Reports() {
     try {
       await deleteAllReportsForUser(row.userId)
       await load()
+      setMessage({ type: 'ok', text: 'All reports were removed and usage counters were reset.' })
     } catch (e) {
-      alert(e?.message || 'Delete failed')
+      setMessage({
+        type: 'error',
+        text: e?.message || 'Unable to delete reports at the moment. Please try again.',
+      })
     } finally {
       setBusyUserId(null)
     }
@@ -104,7 +109,10 @@ export default function Reports() {
 
   const emailLatest = async (row) => {
     if (!row?.email || row.email === '—') {
-      alert('No recipient email is available for this user.')
+      setMessage({
+        type: 'error',
+        text: 'Recipient email is not available for this user.',
+      })
       return
     }
     setBusyUserId(row.userId)
@@ -126,9 +134,12 @@ export default function Reports() {
         subject,
         message,
       })
-      alert('Report update email sent successfully.')
+      setMessage({ type: 'ok', text: 'Report summary email was sent successfully.' })
     } catch (e) {
-      alert(e?.message || 'Could not send report email.')
+      setMessage({
+        type: 'error',
+        text: e?.message || 'Unable to send the report email right now. Please try again.',
+      })
     } finally {
       setBusyUserId(null)
     }
@@ -155,6 +166,15 @@ export default function Reports() {
           Refresh
         </button>
       </div>
+
+      {message.text && (
+        <p
+          className={`text-sm mb-4 ${message.type === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}
+          role="alert"
+        >
+          {message.text}
+        </p>
+      )}
 
       <div className="relative max-w-xl mb-4">
         <input

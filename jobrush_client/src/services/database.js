@@ -79,6 +79,7 @@ export async function incrementAtsCheckUsage(uniqueId) {
   const cur = Number(prev[USERDB_FIELDS.ATS_CHECKS_USED]) || 0
   const next = Math.min(QUOTA_ATS_MAX, cur + 1)
   await update(userRef(uniqueId), { [USERDB_FIELDS.ATS_CHECKS_USED]: next })
+  await syncQuotaSuspendedStatus(uniqueId)
 }
 
 export async function incrementMockInterviewUsage(uniqueId) {
@@ -88,6 +89,25 @@ export async function incrementMockInterviewUsage(uniqueId) {
   const cur = Number(prev[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0
   const next = Math.min(QUOTA_MOCK_MAX, cur + 1)
   await update(userRef(uniqueId), { [USERDB_FIELDS.MOCK_INTERVIEWS_USED]: next })
+  await syncQuotaSuspendedStatus(uniqueId)
+}
+
+/**
+ * Marks user status as suspended when full plan quota is exhausted (ATS + Mock).
+ * Uses accessStatus string to avoid hard account blocking (`suspended: true` is still admin-only hard block).
+ */
+export async function syncQuotaSuspendedStatus(uniqueId) {
+  if (!isFirebaseBackedUserId(uniqueId)) return false
+  const snapshot = await get(userRef(uniqueId))
+  const prev = snapshot.exists() ? snapshot.val() : {}
+  const ats = Number(prev[USERDB_FIELDS.ATS_CHECKS_USED]) || 0
+  const mock = Number(prev[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0
+  const exhausted = ats >= QUOTA_ATS_MAX && mock >= QUOTA_MOCK_MAX
+  const currentStatus = String(prev[USERDB_FIELDS.ACCESS_STATUS] || '').trim().toLowerCase()
+  if (exhausted && currentStatus === 'active') {
+    await update(userRef(uniqueId), { [USERDB_FIELDS.ACCESS_STATUS]: 'suspended' })
+  }
+  return exhausted
 }
 
 /**

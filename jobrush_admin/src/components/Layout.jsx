@@ -14,6 +14,8 @@ import {
   QrCodeIcon,
   KeyIcon,
   EnvelopeIcon,
+  TicketIcon,
+  ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 
@@ -33,10 +35,12 @@ export default function Layout() {
   const location = useLocation()
   const [payOpen, setPayOpen] = useState(() => location.pathname.startsWith('/payments'))
   const [settingsOpen, setSettingsOpen] = useState(() => location.pathname.startsWith('/settings'))
+  const [couponOpen, setCouponOpen] = useState(() => location.pathname.startsWith('/coupons'))
 
   useEffect(() => {
     if (location.pathname.startsWith('/payments')) setPayOpen(true)
     if (location.pathname.startsWith('/settings')) setSettingsOpen(true)
+    if (location.pathname.startsWith('/coupons')) setCouponOpen(true)
   }, [location.pathname])
 
   return (
@@ -88,6 +92,36 @@ export default function Layout() {
                 <NavLink to="/payments/qr" className={subNavClass} onClick={() => setMobileOpen(false)}>
                   <QrCodeIcon className="w-4 h-4 shrink-0 opacity-80" />
                   Upload new QR code
+                </NavLink>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setCouponOpen((o) => !o)}
+              className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm font-medium transition text-left ${
+                location.pathname.startsWith('/coupons')
+                  ? 'bg-admin-800/90 text-white'
+                  : 'text-admin-100 hover:bg-admin-800/80'
+              }`}
+            >
+              <TicketIcon className="w-5 h-5 shrink-0" />
+              <span className="flex-1">Coupon management</span>
+              <ChevronDownIcon
+                className={`w-4 h-4 shrink-0 transition-transform ${couponOpen ? '' : '-rotate-90'}`}
+              />
+            </button>
+            {couponOpen && (
+              <div className="mt-0.5 space-y-0.5">
+                <NavLink to="/coupons/status" className={subNavClass} onClick={() => setMobileOpen(false)}>
+                  <ClipboardDocumentListIcon className="w-4 h-4 shrink-0 opacity-80" />
+                  Coupon status
+                </NavLink>
+                <NavLink to="/coupons/manage" className={subNavClass} onClick={() => setMobileOpen(false)}>
+                  <TicketIcon className="w-4 h-4 shrink-0 opacity-80" />
+                  Coupon management
                 </NavLink>
               </div>
             )}

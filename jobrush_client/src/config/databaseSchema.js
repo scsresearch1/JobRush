@@ -17,6 +17,8 @@ export const COLLECTIONS = {
   INTERVIEW_REPORTS: 'interviewReports',
   /** Stored ATS compatibility runs (one push per successful client analysis) */
   ATS_REPORTS: 'atsReports',
+  COUPONS: 'coupons',
+  COUPON_REDEMPTIONS: 'couponRedemptions',
   ADMIN_PORTAL: 'adminPortal',
 }
 
@@ -33,6 +35,16 @@ export const ADMIN_PORTAL_KEYS = {
 /** Public-facing payment QR image (data URL or https), set from admin portal */
 export const PAYMENT_QR_FIELDS = {
   QR_IMAGE_URL: 'qrImageUrl',
+}
+
+export const COUPON_FIELDS = {
+  COUPON_CODE: 'couponCode',
+  CONTRACT_NAME: 'contractName',
+  DISCOUNT_AMOUNT: 'discountAmount',
+  CONTRACT_PAYMENT_PER_USER: 'contractPaymentPerUser',
+  VALIDITY_DAYS: 'validityDays',
+  VALID_UNTIL: 'validUntil',
+  IS_ACTIVE: 'isActive',
 }
 
 // =============================================================================

@@ -174,6 +174,22 @@ function AppContent({
   closePaymentModal,
 }) {
   const { isOpen, openChatbot, closeChatbot } = useHelpCenter()
+  const handleQuotaReached = () => {
+    let user = {}
+    try {
+      user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
+    } catch {
+      user = {}
+    }
+    const email = String(user?.email || '').trim()
+    if (!email) return
+    closePaymentModal()
+    setShowEmailModal(false)
+    setTimeout(() => {
+      // Reuse the same payment window used at journey start.
+      handleEmailSuccess({ user: { email }, flow: { kind: 'repayment' } })
+    }, 0)
+  }
 
   return (
     <>
@@ -201,7 +217,7 @@ function AppContent({
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <Layout><Dashboard /></Layout>
+              <Layout><Dashboard onQuotaReached={handleQuotaReached} /></Layout>
             </ProtectedRoute>
           }
         />

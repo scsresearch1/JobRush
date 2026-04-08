@@ -3,10 +3,12 @@
  * Scientific-style presentation of time-series behavioral metrics.
  */
 
-import React, { useMemo, useState, useRef } from 'react'
+import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { buildBehavioralReport, generateLocalInterviewTips, detectEmotionSpikesFromCurves } from '../utils/behavioralTimeSeries.js'
 import { getInterviewRecommendations } from '../services/groqService.js'
 import { saveInterviewReport, incrementMockInterviewUsage } from '../services/database.js'
+import { getUser } from '../services/database.js'
+import { USERDB_FIELDS } from '../config/databaseSchema.js'
 
 const CHART_HEIGHT = 80
 const CHART_PADDING = { top: 8, right: 8, bottom: 20, left: 36 }
@@ -262,6 +264,41 @@ export default function BehavioralReport({ responses }) {
   const [recsError, setRecsError] = useState(null)
   const mockQuotaIncremented = useRef(false)
 
+  useEffect(() => {
+    if (!report.questionTimelines?.length || mockQuotaIncremented.current) return
+    let user = {}
+    try {
+      user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
+    } catch {
+      user = {}
+    }
+    const uid = user?.uniqueId
+    if (!uid || String(uid).startsWith('local_')) return
+    mockQuotaIncremented.current = true
+    incrementMockInterviewUsage(uid)
+      .then(async () => {
+        try {
+          const latest = await getUser(uid)
+          if (!latest) return
+          const raw = localStorage.getItem('jobRush_user')
+          const prior = raw ? JSON.parse(raw) : {}
+          localStorage.setItem(
+            'jobRush_user',
+            JSON.stringify({
+              ...prior,
+              accessStatus: latest[USERDB_FIELDS.ACCESS_STATUS] || prior.accessStatus,
+              atsChecksUsed: Number(latest[USERDB_FIELDS.ATS_CHECKS_USED]) || prior.atsChecksUsed || 0,
+              mockInterviewsUsed:
+                Number(latest[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || prior.mockInterviewsUsed || 0,
+            })
+          )
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch(() => {})
+  }, [report])
+
   const fetchRecommendations = () => {
     if (!report.questionTimelines?.length) return
     setRecsLoading(true)
@@ -272,15 +309,6 @@ export default function BehavioralReport({ responses }) {
         try {
           const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
           await saveInterviewReport(user?.uniqueId || 'anonymous', report, recs || [])
-          const uid = user?.uniqueId
-          if (
-            !mockQuotaIncremented.current &&
-            uid &&
-            !String(uid).startsWith('local_')
-          ) {
-            mockQuotaIncremented.current = true
-            incrementMockInterviewUsage(uid).catch(() => {})
-          }
         } catch (e) {
           console.warn('Could not save report to Firebase:', e)
         }

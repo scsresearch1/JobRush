@@ -10,6 +10,8 @@ import SettingsLayout from './pages/SettingsLayout'
 import SettingsPassword from './pages/SettingsPassword'
 import SettingsEmail from './pages/SettingsEmail'
 import PaymentQr from './pages/PaymentQr'
+import CouponStatus from './pages/CouponStatus'
+import CouponManagement from './pages/CouponManagement'
 
 function ProtectedRoute({ children }) {
   const { ready, authenticated } = useAuth()
@@ -42,6 +44,8 @@ function AppRoutes() {
         <Route path="users" element={<Users />} />
         <Route path="reports" element={<Reports />} />
         <Route path="payments/qr" element={<PaymentQr />} />
+        <Route path="coupons/status" element={<CouponStatus />} />
+        <Route path="coupons/manage" element={<CouponManagement />} />
         <Route path="settings" element={<SettingsLayout />}>
           <Route index element={<Navigate to="password" replace />} />
           <Route path="password" element={<SettingsPassword />} />
