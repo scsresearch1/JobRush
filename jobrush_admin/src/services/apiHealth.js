@@ -1,5 +1,6 @@
 /**
- * Probes the JobRush API /api/health (LLM + TTS flags). Base URL is configurable for staging.
+ * Probes the JobRush API /api/health (flags + process stats + Groq/Resend usage headers).
+ * Base URL is configurable for staging.
  */
 
 const DEFAULT_BASE = 'https://jobrush.onrender.com'
@@ -18,6 +19,9 @@ function normalizeBase(url) {
  *   llm?: boolean,
  *   tts?: boolean,
  *   email?: boolean,
+ *   process?: object,
+ *   groqUsage?: object,
+ *   resendUsage?: object,
  *   error?: string
  * }>}
  */
@@ -27,7 +31,7 @@ export async function fetchJobRushApiHealth() {
   const t0 = performance.now()
   try {
     const ctrl = new AbortController()
-    const id = setTimeout(() => ctrl.abort(), 12_000)
+    const id = setTimeout(() => ctrl.abort(), 25_000)
     const res = await fetch(url, { method: 'GET', signal: ctrl.signal })
     clearTimeout(id)
     const ms = Math.round(performance.now() - t0)
@@ -43,6 +47,9 @@ export async function fetchJobRushApiHealth() {
       llm: !!body.llm,
       tts: !!body.tts,
       email: !!body.email,
+      process: body.process,
+      groqUsage: body.groqUsage,
+      resendUsage: body.resendUsage,
     }
   } catch (e) {
     return {

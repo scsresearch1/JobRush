@@ -132,7 +132,7 @@ const MetricCard = ({ label, value, sub, accent }) => (
 )
 
 const LoadTestPage = () => {
-  const apiBase = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? 'https://jobrush.onrender.com' : '')
+  const apiBase = import.meta.env.PROD ? 'https://jobrush.onrender.com' : ''
   const fallbackLocalHealth = useMemo(() => {
     if (typeof window === 'undefined') return '/api/health'
     if (apiBase) return `${apiBase.replace(/\/$/, '')}/api/health`

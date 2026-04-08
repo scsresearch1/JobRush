@@ -801,8 +801,97 @@ app.post('/api/admin/send-user-email', requireAdminSecret, async (req, res) => {
   }
 })
 
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, llm: !!groq, tts: !!textToSpeechClient, email: !!resend })
+async function probeGroqUsageHeaders() {
+  const key = process.env.GROQ_API_KEY
+  if (!key) return { ok: false, reason: 'no_key' }
+  const ac = new AbortController()
+  const tid = setTimeout(() => ac.abort(), 8000)
+  try {
+    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [{ role: 'user', content: '.' }],
+        max_tokens: 1,
+      }),
+      signal: ac.signal,
+    })
+    clearTimeout(tid)
+    const h = (n) => r.headers.get(n)
+    return {
+      ok: true,
+      httpStatus: r.status,
+      limitRequests: h('x-ratelimit-limit-requests'),
+      remainingRequests: h('x-ratelimit-remaining-requests'),
+      limitTokens: h('x-ratelimit-limit-tokens'),
+      remainingTokens: h('x-ratelimit-remaining-tokens'),
+      resetRequests: h('x-ratelimit-reset-requests'),
+      resetTokens: h('x-ratelimit-reset-tokens'),
+    }
+  } catch (e) {
+    clearTimeout(tid)
+    return {
+      ok: false,
+      reason: 'fetch_error',
+      error: e?.name === 'AbortError' ? 'timeout' : String(e?.message || e),
+    }
+  }
+}
+
+async function probeResendUsageHeaders() {
+  const key = process.env.RESEND_API_KEY
+  if (!key) return { ok: false, reason: 'no_key' }
+  const ac = new AbortController()
+  const tid = setTimeout(() => ac.abort(), 8000)
+  try {
+    const r = await fetch('https://api.resend.com/domains', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${key}` },
+      signal: ac.signal,
+    })
+    clearTimeout(tid)
+    const h = (n) => r.headers.get(n)
+    return {
+      ok: true,
+      httpStatus: r.status,
+      ratelimitLimit: h('ratelimit-limit'),
+      ratelimitRemaining: h('ratelimit-remaining'),
+      ratelimitReset: h('ratelimit-reset'),
+      dailyQuotaUsed: h('x-resend-daily-quota'),
+      monthlyQuotaUsed: h('x-resend-monthly-quota'),
+    }
+  } catch (e) {
+    clearTimeout(tid)
+    return {
+      ok: false,
+      reason: 'fetch_error',
+      error: e?.name === 'AbortError' ? 'timeout' : String(e?.message || e),
+    }
+  }
+}
+
+app.get('/api/health', async (_req, res) => {
+  const mem = process.memoryUsage()
+  const processInfo = {
+    uptimeSeconds: Math.floor(process.uptime()),
+    rssMb: Math.round(mem.rss / 1_048_576),
+    heapUsedMb: Math.round(mem.heapUsed / 1_048_576),
+    node: process.version,
+  }
+  const [groqUsage, resendUsage] = await Promise.all([probeGroqUsageHeaders(), probeResendUsageHeaders()])
+  res.json({
+    ok: true,
+    llm: !!groq,
+    tts: !!textToSpeechClient,
+    email: !!resend,
+    process: processInfo,
+    groqUsage,
+    resendUsage,
+  })
 })
 
 const PORT = process.env.PORT || 3001

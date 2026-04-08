@@ -22,7 +22,13 @@ The server only receives structured data (resume JSON, behavioral report metrics
    - Publish directory: `dist`
 3. **Environment variables** (Build-time):
    - `VITE_FIREBASE_*` = your Firebase web config
-   - `VITE_API_URL` = optional; defaults to `https://jobrush.onrender.com` in production. Override if your Render app has a different URL.
+   - **API base URL** is **not** an env var: production calls `https://jobrush.onrender.com` from `jobrush_client/src/config/jobrushApi.js`. Change that file if your Render service URL changes.
+
+### If the app says it cannot reach the API
+
+- Confirm **Render** is running (dashboard → your web service → logs). Free tier cold starts need a long first wait or a keep-warm ping.
+- In the browser devtools **Network** tab, requests should go to `https://jobrush.onrender.com/api/...`.
+- After changing `jobrushApi.js`, trigger a new Netlify build.
 
 ---
 
@@ -40,8 +46,8 @@ The server only receives structured data (resume JSON, behavioral report metrics
 
 ## Order
 
-1. Deploy **Render** first → get the API URL
-2. Deploy **Netlify** with `VITE_API_URL` set to that URL
+1. Deploy **Render** first
+2. Deploy **Netlify** (ensure `jobrushApi.js` matches your Render URL if it is not the default)
 
 ---
 

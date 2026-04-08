@@ -1,11 +1,12 @@
 /**
- * LLM service - explanations and recommendations
- * Calls server API (requires API server running)
- * Production: defaults to Render URL (backend has CORS). Proxy avoided due to 26s Netlify timeout.
- * Local dev: VITE_API_URL empty uses Vite proxy; or set to http://localhost:3001
+ * LLM service — explanations and recommendations
+ * Production: always calls Render directly (see ../config/jobrushApi.js). Netlify /api proxy is not used for these requests.
+ * Local dev: relative /api → Vite proxy → localhost:3001
  */
 
-const API_BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? 'https://jobrush.onrender.com' : '')
+import { JOB_RUSH_API_ORIGIN } from '../config/jobrushApi.js'
+
+const API_BASE = JOB_RUSH_API_ORIGIN
 const FETCH_TIMEOUT_MS = 120000 // 120s (Render cold start ~60-90s + LLM ~20s)
 const RETRY_DELAY_MS = 45000 // 45s wait before retry (gives cold server time to wake)
 const MAX_RETRIES = 1 // Retry once on timeout/network (cold start)
@@ -67,7 +68,11 @@ async function fetchApi(path, body, opts = {}, retryCount = 0) {
   } catch (err) {
     clearTimeout(timeoutId)
     console.error('[JobRush API] Fetch error', { path, name: err.name, message: err.message, attempt: retryCount + 1 })
-    const isRetryable = err.name === 'AbortError' || err.message?.includes('timed out') || err.message?.includes('unreachable')
+    const em = String(err?.message || '')
+    const isRetryable =
+      err?.name === 'AbortError' ||
+      err?.name === 'TypeError' ||
+      /timed out|failed to fetch|networkerror|load failed|network request failed/i.test(em)
     if (isRetryable && allowRetry && retryCount < MAX_RETRIES) {
       console.log('[JobRush API] Retrying after', RETRY_DELAY_MS / 1000, 's (server may be waking)')
       await sleep(RETRY_DELAY_MS)
@@ -77,7 +82,11 @@ async function fetchApi(path, body, opts = {}, retryCount = 0) {
     if (err.name === 'AbortError') {
       throw new Error('Request timed out. The server may be waking up—try again in a moment.')
     }
-    throw new Error('API server unreachable. If on production, ensure Netlify proxy is configured.')
+    const detail = err.message || err.name || 'network error'
+    const baseHint = API_BASE
+      ? `Calling ${API_BASE}. Is the Render service up? First request after idle can take 60–90s—retry.`
+      : 'Using dev proxy /api → localhost. Run npm run server or npm run dev:full.'
+    throw new Error(`Could not reach the API (${detail}). ${baseHint}`)
   }
   clearTimeout(timeoutId)
   if (!res.ok) {
@@ -102,7 +111,9 @@ async function fetchApi(path, body, opts = {}, retryCount = 0) {
     return data
   } catch (parseErr) {
     console.error('[JobRush API] JSON parse error', { path, preview: text?.slice(0, 200), parseErr: parseErr.message })
-    throw new Error('Invalid response from API. Check Netlify proxy and Render backend.')
+    throw new Error(
+      `The API returned non-JSON (often HTML or an error page). API base: ${API_BASE || 'dev /api proxy'}.`
+    )
   }
 }
 

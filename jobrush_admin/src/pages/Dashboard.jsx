@@ -19,6 +19,72 @@ import { fetchJobRushApiHealth } from '../services/apiHealth'
 
 const onlineMinutes = Math.round(ONLINE_PRESENCE_WINDOW_MS / 60_000)
 
+function formatProcessUptime(seconds) {
+  const t = Number(seconds) || 0
+  const s = Math.floor(t % 60)
+  const m = Math.floor((t / 60) % 60)
+  const h = Math.floor((t / 3600) % 24)
+  const d = Math.floor(t / 86400)
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
+}
+
+function groqQuotaCells(g) {
+  if (!g || g.reason === 'no_key') {
+    return { quota: '—', remaining: '—', reset: '—' }
+  }
+  if (!g.ok) {
+    return {
+      quota: 'Probe failed',
+      remaining: String(g.error || g.reason || '—'),
+      reset: '—',
+    }
+  }
+  const quota = []
+  if (g.limitRequests != null) quota.push(`${g.limitRequests} req/day (max)`)
+  if (g.limitTokens != null) quota.push(`${g.limitTokens} tok/min (max)`)
+  const rem = []
+  if (g.remainingRequests != null) rem.push(`${g.remainingRequests} req left (day)`)
+  if (g.remainingTokens != null) rem.push(`${g.remainingTokens} tok left (min)`)
+  const reset = []
+  if (g.resetRequests) reset.push(`Day: ${g.resetRequests}`)
+  if (g.resetTokens) reset.push(`Min: ${g.resetTokens}`)
+  if (g.httpStatus != null && g.httpStatus !== 200) reset.push(`HTTP ${g.httpStatus}`)
+  return {
+    quota: quota.join(' · ') || '—',
+    remaining: rem.join(' · ') || '—',
+    reset: reset.join(' · ') || '—',
+  }
+}
+
+function resendQuotaCells(r) {
+  if (!r || r.reason === 'no_key') {
+    return { quota: '—', remaining: '—', reset: '—' }
+  }
+  if (!r.ok) {
+    return {
+      quota: 'Probe failed',
+      remaining: String(r.error || r.reason || '—'),
+      reset: '—',
+    }
+  }
+  const quota = []
+  if (r.ratelimitLimit != null) quota.push(`${r.ratelimitLimit} API req/window (max)`)
+  const rem = []
+  if (r.ratelimitRemaining != null) rem.push(`${r.ratelimitRemaining} API req left`)
+  if (r.dailyQuotaUsed != null) rem.push(`Daily send used: ${r.dailyQuotaUsed}`)
+  if (r.monthlyQuotaUsed != null) rem.push(`Monthly send used: ${r.monthlyQuotaUsed}`)
+  const reset = []
+  if (r.ratelimitReset != null) reset.push(`API resets in ${r.ratelimitReset}s`)
+  return {
+    quota: quota.join(' · ') || '—',
+    remaining: rem.join(' · ') || '—',
+    reset: reset.join(' · ') || '—',
+  }
+}
+
 function StatCard({ to, icon: Icon, title, value, hint, loading }) {
   const inner = (
     <div className="flex items-start justify-between gap-4">
@@ -56,60 +122,81 @@ function StatCard({ to, icon: Icon, title, value, hint, loading }) {
 /**
  * @param {object | null} apiHealth
  * @param {{ firebaseOk: boolean, firebaseChecking: boolean }} fb
+ * @param {{ registered: number | null, reportCount: number | null }} counts
  */
-function buildServiceHealthRows(apiHealth, { firebaseOk, firebaseChecking }) {
+function buildServiceHealthRows(apiHealth, { firebaseOk, firebaseChecking }, counts) {
   const unreachable = !apiHealth?.reachable
   const jrOk = apiHealth?.reachable && apiHealth?.ok
+  const proc = apiHealth?.process
+  const gq = groqQuotaCells(apiHealth?.groqUsage)
+  const rs = resendQuotaCells(apiHealth?.resendUsage)
 
   return [
     {
       key: 'jobrush',
-      name: 'JobRush API',
+      name: 'JobRush API (Node)',
       status: jrOk
         ? `Operational · ${apiHealth.ms} ms`
         : unreachable
           ? `Unreachable${apiHealth.error ? ` (${apiHealth.error})` : ''}`
           : 'Degraded',
       tone: /** @type {StatusTone} */ (jrOk ? 'ok' : 'bad'),
-      quota: 'No API-key quota on this endpoint',
-      remaining: '—',
-      reset: '—',
+      quota:
+        jrOk && proc
+          ? `RSS ${proc.rssMb} MB · heap ${proc.heapUsedMb} MB`
+          : '—',
+      remaining: jrOk && proc ? `Uptime ${formatProcessUptime(proc.uptimeSeconds)}` : '—',
+      reset: jrOk && proc?.node ? proc.node : '—',
     },
     {
       key: 'firebase',
       name: 'Firebase Realtime Database',
       status: firebaseChecking ? 'Checking…' : firebaseOk ? 'Connected' : 'No data yet',
       tone: /** @type {StatusTone} */ (firebaseChecking ? 'muted' : firebaseOk ? 'ok' : 'bad'),
-      quota: 'Yes — plan limits (storage, bandwidth, concurrent connections)',
-      remaining: 'See Firebase console → Usage',
-      reset: 'Varies by metric (often daily rolling; billing cycle for paid plans)',
+      quota:
+        counts.registered != null
+          ? `${counts.registered} user rows (userdb)`
+          : '—',
+      remaining:
+        counts.reportCount != null
+          ? `${counts.reportCount} interview reports stored`
+          : '—',
+      reset: firebaseOk ? 'Live subscription' : '—',
     },
     {
       key: 'groq',
       name: 'AI (Groq)',
-      status: unreachable ? '—' : apiHealth?.llm ? 'Ready' : 'Not configured',
+      status: unreachable
+        ? '—'
+        : apiHealth?.llm
+          ? 'Ready (SDK)'
+          : 'Key missing on server',
       tone: /** @type {StatusTone} */ (unreachable ? 'muted' : apiHealth?.llm ? 'ok' : 'warn'),
-      quota: 'Yes — tokens / requests per minute & per day (plan)',
-      remaining: 'Not returned by our API — check Groq Cloud usage',
-      reset: 'Per Groq plan (typically daily / rolling windows)',
+      quota: unreachable ? '—' : gq.quota,
+      remaining: unreachable ? '—' : gq.remaining,
+      reset: unreachable ? '—' : gq.reset,
     },
     {
       key: 'tts',
       name: 'Google Cloud Text-to-Speech',
-      status: unreachable ? '—' : apiHealth?.tts ? 'Ready' : 'Not configured',
+      status: unreachable ? '—' : apiHealth?.tts ? 'Credentials OK' : 'Not configured',
       tone: /** @type {StatusTone} */ (unreachable ? 'muted' : apiHealth?.tts ? 'ok' : 'warn'),
-      quota: 'Yes — Google Cloud quotas & billing',
-      remaining: 'Google Cloud Console → APIs & Services → Quotas',
-      reset: 'Per Google quota window / billing account',
+      quota: 'Usage not returned by API',
+      remaining: '—',
+      reset: 'See GCP → APIs & Services → Cloud Text-to-Speech → Quotas',
     },
     {
       key: 'resend',
       name: 'Resend (transactional email)',
-      status: unreachable ? '—' : apiHealth?.email ? 'Ready' : 'Not configured',
+      status: unreachable
+        ? '—'
+        : apiHealth?.email
+          ? 'API key on server'
+          : 'Not configured',
       tone: /** @type {StatusTone} */ (unreachable ? 'muted' : apiHealth?.email ? 'ok' : 'warn'),
-      quota: 'Yes — monthly emails & domains (plan)',
-      remaining: 'Resend dashboard → Usage',
-      reset: 'Usually monthly on your subscription renewal date',
+      quota: unreachable ? '—' : rs.quota,
+      remaining: unreachable ? '—' : rs.remaining,
+      reset: unreachable ? '—' : rs.reset,
     },
   ]
 }
@@ -231,10 +318,9 @@ export default function Dashboard() {
             <div className="min-w-0">
               <h2 className="font-semibold text-white text-sm sm:text-base">Service health</h2>
               <p className="text-xs text-admin-500 leading-relaxed">
-                Integrations used by JobRush. Third-party <strong className="font-medium text-admin-400">remaining</strong>{' '}
-                and <strong className="font-medium text-admin-400">reset</strong> times are not available from our server;
-                use each provider&apos;s console where noted. Set{' '}
-                <code className="text-admin-400">VITE_JOBRUSH_API_BASE</code> for a non-production API.
+                Live numbers: Node process stats and Firebase row counts from this dashboard; Groq/Resend from provider
+                HTTP headers (one tiny Groq completion per refresh). Google TTS usage is only in Google Cloud Console.
+                Set <code className="text-admin-400">VITE_JOBRUSH_API_BASE</code> to point at a staging API if needed.
               </p>
             </div>
           </div>
@@ -254,10 +340,14 @@ export default function Dashboard() {
           ) : (
             <>
               <div className="sm:hidden space-y-4">
-                {buildServiceHealthRows(apiHealth, {
-                  firebaseOk: userMetrics.registered != null || reportCount != null,
-                  firebaseChecking: loadingFirebase,
-                }).map((row) => (
+                {buildServiceHealthRows(
+                  apiHealth,
+                  {
+                    firebaseOk: userMetrics.registered != null || reportCount != null,
+                    firebaseChecking: loadingFirebase,
+                  },
+                  { registered: userMetrics.registered, reportCount }
+                ).map((row) => (
                   <div
                     key={row.key}
                     className="rounded-xl border border-admin-800/90 bg-admin-950/40 p-4 space-y-2"
@@ -302,10 +392,14 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-admin-800/70">
-                    {buildServiceHealthRows(apiHealth, {
-                      firebaseOk: userMetrics.registered != null || reportCount != null,
-                      firebaseChecking: loadingFirebase,
-                    }).map((row) => (
+                    {buildServiceHealthRows(
+                      apiHealth,
+                      {
+                        firebaseOk: userMetrics.registered != null || reportCount != null,
+                        firebaseChecking: loadingFirebase,
+                      },
+                      { registered: userMetrics.registered, reportCount }
+                    ).map((row) => (
                       <tr key={row.key} className="align-top">
                         <td className="py-3 pr-4 text-admin-200 font-medium whitespace-nowrap">{row.name}</td>
                         <td className="py-3 pr-4">

@@ -46,8 +46,14 @@ const ResumeImprovements = () => {
     const evaluation = evaluateResume(parsed)
     try {
       console.log('[ResumeImprovements] Fetching recommendations')
-      // Pre-warm: wait for server to be ready (retries every 10s, up to 90s)
-      await pingHealth(9, 10000)
+      const reachable = await pingHealth(9, 10000)
+      if (!reachable) {
+        setError(
+          'The JobRush API did not respond to health checks (about 90s). On Render free tier the service sleeps—wait 1–2 minutes and tap Retry. The app calls https://jobrush.onrender.com directly; confirm that service is running in the Render dashboard.'
+        )
+        setLoading(false)
+        return
+      }
       const { recommendations: recs } = await getRecommendations(parsed, evaluation)
       if (recs?.length > 0) setRecommendations(recs)
       setError(null)
@@ -225,19 +231,23 @@ const ResumeImprovements = () => {
           </div>
         )}
         {error && (
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <p className="text-amber-600 text-sm">Using default suggestions. ({error})</p>
+          <div className="mb-4 max-w-3xl rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-sm text-amber-950 shadow-sm">
+            <p className="font-semibold text-amber-900">Using built-in suggestions</p>
+            <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed text-amber-900/90">{error}</p>
             <button
               type="button"
               onClick={fetchRecommendations}
-              className="text-sm text-primary-600 hover:text-primary-700 font-medium underline"
+              className="mt-3 text-sm font-medium text-primary-700 hover:text-primary-800 underline"
             >
               Retry
             </button>
           </div>
         )}
         {applyError && (
-          <p className="text-red-600 text-sm mb-4">Could not apply correction: {applyError}</p>
+          <div className="mb-4 max-w-3xl rounded-xl border border-red-200 bg-red-50/90 p-4 text-sm text-red-950 shadow-sm">
+            <p className="font-semibold text-red-900">Could not apply this AI correction</p>
+            <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed text-red-900/90">{applyError}</p>
+          </div>
         )}
 
         <p className="text-xs text-gray-500 mb-4 max-w-xl">
