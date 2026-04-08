@@ -1,6 +1,6 @@
 /**
- * Probes the JobRush API /api/health (flags + process stats + Groq/Resend usage headers).
- * Base URL is configurable for staging.
+ * Probes JobRush API /api/health/deep (flags + process + Groq/Resend usage probes).
+ * Fast /api/health is for Render checks and client pings only.
  */
 
 const DEFAULT_BASE = 'https://jobrush.onrender.com'
@@ -27,7 +27,7 @@ function normalizeBase(url) {
  */
 export async function fetchJobRushApiHealth() {
   const base = normalizeBase(import.meta.env.VITE_JOBRUSH_API_BASE)
-  const url = `${base}/api/health`
+  const url = `${base}/api/health/deep`
   const t0 = performance.now()
   try {
     const ctrl = new AbortController()

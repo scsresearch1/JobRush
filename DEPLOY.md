@@ -41,6 +41,8 @@ The server only receives structured data (resume JSON, behavioral report metrics
 5. **Environment variables**:
    - `GROQ_API_KEY` = your AI API key
    - Optional: `GOOGLE_APPLICATION_CREDENTIALS` for Indian TTS
+   - The service listens on **`0.0.0.0:$PORT`** (Render sets `PORT`). Health check path: **`/api/health`** (fast, no outbound calls).
+   - On Render, `RENDER=true` enables a **self-ping** every ~12 minutes to `/api/health` (disable with `ENABLE_SELF_PING=0`).
 
 ---
 

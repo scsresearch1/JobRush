@@ -32,7 +32,7 @@ const ResumeImprovements = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [applying, setApplying] = useState(null) // index | 'all' | null
-  /** When Apply All runs, show "2 / 4" so users know it is sequential LLM calls (can take minutes on cold API). */
+  /** When Apply All runs, show progress (e.g. 2 / 4). */
   const [applyAllProgress, setApplyAllProgress] = useState(null) // { done, total } | null
   const [applyError, setApplyError] = useState(null)
 
@@ -249,10 +249,6 @@ const ResumeImprovements = () => {
             <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed text-red-900/90">{applyError}</p>
           </div>
         )}
-
-        <p className="text-xs text-gray-500 mb-4 max-w-xl">
-          Each Apply calls the AI with your full resume. &quot;Apply All&quot; runs one request per suggestion in order and can take several minutes if the API was idle (cold start).
-        </p>
 
         <div className="flex flex-col items-end gap-1 mb-6">
           <button

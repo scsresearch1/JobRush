@@ -4,29 +4,79 @@
  */
 import { config } from 'dotenv'
 import { resolve } from 'path'
+import { randomUUID } from 'crypto'
 config({ path: resolve(process.cwd(), '.env') })
 import express from 'express'
 import cors from 'cors'
 import Groq from 'groq-sdk'
 import { Resend } from 'resend'
+
+process.on('uncaughtException', (err) => {
+  console.error('[fatal] uncaughtException', err?.stack || err)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[fatal] unhandledRejection', reason)
+})
+
 const app = express()
 
-// CORS: reflect request origin (required by some proxies)
-const ALLOWED_ORIGINS = ['https://jbrush.netlify.app', 'http://localhost:5173', 'http://localhost:3000']
+/** Browser origins allowed to call this API (no wildcard). */
+const ALLOWED_ORIGINS = new Set([
+  'https://jbrush.netlify.app',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:3000',
+])
+
+function isAllowedOrigin(origin) {
+  if (!origin) return false
+  if (ALLOWED_ORIGINS.has(origin)) return true
+  try {
+    const u = new URL(origin)
+    return u.hostname.endsWith('.netlify.app')
+  } catch {
+    return false
+  }
+}
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true)
+      if (isAllowedOrigin(origin)) return callback(null, true)
+      callback(null, false)
+    },
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 86400,
+  })
+)
+
+app.use(express.json({ limit: '4mb' }))
+
 app.use((req, res, next) => {
-  const origin = req.headers.origin
-  const allow = origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.netlify.app')) ? origin : '*'
-  res.setHeader('Access-Control-Allow-Origin', allow)
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  res.setHeader('Access-Control-Max-Age', '86400')
-  if (req.method === 'OPTIONS') return res.status(204).end()
+  const requestId = randomUUID()
+  req.requestId = requestId
+  res.setHeader('X-Request-Id', requestId)
+  const t0 = Date.now()
+  res.on('finish', () => {
+    const path = req.originalUrl?.split('?')[0] || req.url
+    console.log(
+      JSON.stringify({
+        level: 'info',
+        requestId,
+        method: req.method,
+        path,
+        status: res.statusCode,
+        ms: Date.now() - t0,
+      })
+    )
+  })
   next()
 })
-app.use(
-  cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] })
-)
-app.use(express.json({ limit: '1mb' }))
 
 const groq = process.env.GROQ_API_KEY
   ? new Groq({ apiKey: process.env.GROQ_API_KEY })
@@ -49,6 +99,11 @@ const TOKENS_SOP = 2048
 const TOKENS_COVER_LETTER = 2048
 const TOKENS_INTERVIEW_TIPS = 2048
 const TOKENS_CHAT_REPLY = 2048
+/** Groq SDK call ceiling (ms). Large resume JSON routes need headroom; override with GROQ_SDK_TIMEOUT_MS. */
+const GROQ_SDK_TIMEOUT_MS = Math.min(
+  Math.max(Number(process.env.GROQ_SDK_TIMEOUT_MS) || 120_000, 15_000),
+  300_000
+)
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 const ADMIN_API_SECRET = String(process.env.ADMIN_API_SECRET || '').trim()
 
@@ -96,9 +151,26 @@ async function sendResendMail({ from, to, subject, html, text, replyTo }) {
     text,
   }
   if (replyTo) payload.reply_to = replyTo
-  const out = await resend.emails.send(payload)
-  if (out?.error) throw new Error(out.error.message || 'Resend rejected the email request.')
-  return out?.data?.id || null
+  let lastErr
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const out = await resend.emails.send(payload)
+      if (out?.error) throw new Error(out.error.message || 'Resend rejected the email request.')
+      return out?.data?.id || null
+    } catch (e) {
+      lastErr = e
+      console.error(
+        JSON.stringify({
+          level: 'warn',
+          msg: 'Resend send failed',
+          attempt,
+          error: e?.message || String(e),
+        })
+      )
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 1000))
+    }
+  }
+  throw lastErr
 }
 
 function truncateStringsDeep(val, maxLen, seen = new WeakSet()) {
@@ -124,12 +196,25 @@ async function groqCompleteMessages(messages, maxTokens, model, temperature) {
   if (!groq) {
     throw new Error('AI service not configured. Add the required API key to your environment.')
   }
-  const completion = await groq.chat.completions.create({
+  const createPromise = groq.chat.completions.create({
     model,
     messages,
     max_tokens: maxTokens,
     temperature,
   })
+  let timeoutId
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`Groq request timed out after ${GROQ_SDK_TIMEOUT_MS}ms`)),
+      GROQ_SDK_TIMEOUT_MS
+    )
+  })
+  let completion
+  try {
+    completion = await Promise.race([createPromise, timeoutPromise])
+  } finally {
+    clearTimeout(timeoutId)
+  }
   const ch = completion.choices[0]
   return {
     content: String(ch?.message?.content ?? '').trim(),
@@ -874,33 +959,107 @@ async function probeResendUsageHeaders() {
   }
 }
 
-app.get('/api/health', async (_req, res) => {
+function buildProcessInfo() {
   const mem = process.memoryUsage()
-  const processInfo = {
+  return {
     uptimeSeconds: Math.floor(process.uptime()),
     rssMb: Math.round(mem.rss / 1_048_576),
     heapUsedMb: Math.round(mem.heapUsed / 1_048_576),
     node: process.version,
   }
+}
+
+/** Fast: for Render health checks, client preflight pings — no outbound provider calls. */
+app.get('/api/health', (_req, res) => {
+  res.json({
+    ok: true,
+    llm: !!groq,
+    tts: !!textToSpeechClient,
+    email: !!resend,
+    process: buildProcessInfo(),
+  })
+})
+
+/** Slow: Groq + Resend usage probes (admin dashboard only). */
+app.get('/api/health/deep', async (_req, res) => {
   const [groqUsage, resendUsage] = await Promise.all([probeGroqUsageHeaders(), probeResendUsageHeaders()])
   res.json({
     ok: true,
     llm: !!groq,
     tts: !!textToSpeechClient,
     email: !!resend,
-    process: processInfo,
+    process: buildProcessInfo(),
     groqUsage,
     resendUsage,
   })
 })
 
-const PORT = process.env.PORT || 3001
-app.listen(PORT, () => {
-  console.log(`JobRush API running on http://localhost:${PORT}`)
+app.use((err, req, res, _next) => {
+  if (res.headersSent) return
+  console.error(
+    JSON.stringify({
+      level: 'error',
+      requestId: req.requestId,
+      message: err?.message,
+    })
+  )
+  res.status(500).json({ error: 'Internal server error.' })
+})
+
+const IS_RENDER = process.env.RENDER === 'true'
+const HOST = process.env.BIND_HOST || '0.0.0.0'
+let PORT
+if (IS_RENDER) {
+  PORT = Number.parseInt(String(process.env.PORT || ''), 10)
+  if (!Number.isFinite(PORT) || PORT < 1 || PORT > 65535) {
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        msg: 'Render requires a valid PORT environment variable',
+        portEnv: process.env.PORT,
+      })
+    )
+    process.exit(1)
+  }
+} else {
+  PORT = Number.parseInt(String(process.env.PORT || ''), 10) || 3001
+}
+
+function startSelfPingOnRender() {
+  if (process.env.ENABLE_SELF_PING === '0') return
+  if (process.env.RENDER !== 'true') return
+  const base = String(process.env.RENDER_EXTERNAL_URL || 'https://jobrush.onrender.com').replace(/\/$/, '')
+  const intervalMs = Math.max(60_000, Number(process.env.SELF_PING_INTERVAL_MS) || 12 * 60 * 1000)
+  setInterval(() => {
+    fetch(`${base}/api/health`, {
+      headers: { 'User-Agent': 'JobRush-self-ping/1' },
+    }).catch((e) => console.error('[self-ping]', e?.message || e))
+  }, intervalMs)
+  console.log(
+    `[self-ping] Render free tier keep-warm: GET /api/health every ${Math.round(intervalMs / 60000)} min → ${base}`
+  )
+}
+
+app.listen(PORT, HOST, () => {
+  const listenLog = {
+    level: 'info',
+    msg: 'JobRush API listening',
+    host: HOST,
+    port: PORT,
+    groqTimeoutMs: GROQ_SDK_TIMEOUT_MS,
+  }
+  if (IS_RENDER) {
+    listenLog.note =
+      'Render forwards to this socket; use your *.onrender.com URL (or RENDER_EXTERNAL_URL) for HTTP checks — not localhost.'
+    const ext = String(process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '')
+    if (ext) listenLog.publicBaseUrl = ext
+  }
+  console.log(JSON.stringify(listenLog))
   console.log(`[email] New-user/payment alerts → ${ADMIN_NOTIFY_EMAIL} (override with ADMIN_NOTIFY_EMAIL)`)
   if (groq) {
     console.log(`[groq] Models: default=${GROQ_MODEL} apply-correction=${GROQ_MODEL_HEAVY} (set GROQ_MODEL / GROQ_MODEL_HEAVY to override)`)
   } else {
     console.warn('Warning: API key not set. AI features will return errors.')
   }
+  startSelfPingOnRender()
 })
