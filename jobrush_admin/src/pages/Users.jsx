@@ -128,7 +128,8 @@ export default function Users() {
     if (decision === 'approved') {
       const atsUsed = Number(row[USERDB_FIELDS.ATS_CHECKS_USED]) || 0
       const mockUsed = Number(row[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0
-      const renewalCycle = atsUsed >= QUOTA_ATS && mockUsed >= QUOTA_MOCK
+      const renewalCycle =
+        atsUsed >= QUOTA_ATS || mockUsed >= QUOTA_MOCK || row[USERDB_FIELDS.ACCESS_STATUS] === 'suspended'
       const patch = {
         [USERDB_FIELDS.ACCESS_STATUS]: 'active',
         [USERDB_FIELDS.SUSPENDED]: false,

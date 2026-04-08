@@ -51,9 +51,80 @@ function StatCard({ to, icon: Icon, title, value, hint, loading }) {
   )
 }
 
-function statusLabel(reachable, ok) {
-  if (!reachable) return 'Unavailable'
-  return ok ? 'Operational' : 'Degraded'
+/** @typedef {'ok' | 'warn' | 'bad' | 'muted'} StatusTone */
+
+/**
+ * @param {object | null} apiHealth
+ * @param {{ firebaseOk: boolean, firebaseChecking: boolean }} fb
+ */
+function buildServiceHealthRows(apiHealth, { firebaseOk, firebaseChecking }) {
+  const unreachable = !apiHealth?.reachable
+  const jrOk = apiHealth?.reachable && apiHealth?.ok
+
+  return [
+    {
+      key: 'jobrush',
+      name: 'JobRush API',
+      status: jrOk
+        ? `Operational · ${apiHealth.ms} ms`
+        : unreachable
+          ? `Unreachable${apiHealth.error ? ` (${apiHealth.error})` : ''}`
+          : 'Degraded',
+      tone: /** @type {StatusTone} */ (jrOk ? 'ok' : 'bad'),
+      quota: 'No API-key quota on this endpoint',
+      remaining: '—',
+      reset: '—',
+    },
+    {
+      key: 'firebase',
+      name: 'Firebase Realtime Database',
+      status: firebaseChecking ? 'Checking…' : firebaseOk ? 'Connected' : 'No data yet',
+      tone: /** @type {StatusTone} */ (firebaseChecking ? 'muted' : firebaseOk ? 'ok' : 'bad'),
+      quota: 'Yes — plan limits (storage, bandwidth, concurrent connections)',
+      remaining: 'See Firebase console → Usage',
+      reset: 'Varies by metric (often daily rolling; billing cycle for paid plans)',
+    },
+    {
+      key: 'groq',
+      name: 'AI (Groq)',
+      status: unreachable ? '—' : apiHealth?.llm ? 'Ready' : 'Not configured',
+      tone: /** @type {StatusTone} */ (unreachable ? 'muted' : apiHealth?.llm ? 'ok' : 'warn'),
+      quota: 'Yes — tokens / requests per minute & per day (plan)',
+      remaining: 'Not returned by our API — check Groq Cloud usage',
+      reset: 'Per Groq plan (typically daily / rolling windows)',
+    },
+    {
+      key: 'tts',
+      name: 'Google Cloud Text-to-Speech',
+      status: unreachable ? '—' : apiHealth?.tts ? 'Ready' : 'Not configured',
+      tone: /** @type {StatusTone} */ (unreachable ? 'muted' : apiHealth?.tts ? 'ok' : 'warn'),
+      quota: 'Yes — Google Cloud quotas & billing',
+      remaining: 'Google Cloud Console → APIs & Services → Quotas',
+      reset: 'Per Google quota window / billing account',
+    },
+    {
+      key: 'resend',
+      name: 'Resend (transactional email)',
+      status: unreachable ? '—' : apiHealth?.email ? 'Ready' : 'Not configured',
+      tone: /** @type {StatusTone} */ (unreachable ? 'muted' : apiHealth?.email ? 'ok' : 'warn'),
+      quota: 'Yes — monthly emails & domains (plan)',
+      remaining: 'Resend dashboard → Usage',
+      reset: 'Usually monthly on your subscription renewal date',
+    },
+  ]
+}
+
+function toneClass(tone) {
+  switch (tone) {
+    case 'ok':
+      return 'text-emerald-300'
+    case 'warn':
+      return 'text-amber-300'
+    case 'bad':
+      return 'text-red-300'
+    default:
+      return 'text-admin-500'
+  }
 }
 
 export default function Dashboard() {
@@ -159,8 +230,11 @@ export default function Dashboard() {
             </div>
             <div className="min-w-0">
               <h2 className="font-semibold text-white text-sm sm:text-base">Service health</h2>
-              <p className="text-xs text-admin-500 truncate">
-                JobRush API — set <code className="text-admin-400">VITE_JOBRUSH_API_BASE</code> if not using production
+              <p className="text-xs text-admin-500 leading-relaxed">
+                Integrations used by JobRush. Third-party <strong className="font-medium text-admin-400">remaining</strong>{' '}
+                and <strong className="font-medium text-admin-400">reset</strong> times are not available from our server;
+                use each provider&apos;s console where noted. Set{' '}
+                <code className="text-admin-400">VITE_JOBRUSH_API_BASE</code> for a non-production API.
               </p>
             </div>
           </div>
@@ -178,47 +252,83 @@ export default function Dashboard() {
           {!apiHealth ? (
             <p className="text-admin-500 text-sm">Checking services…</p>
           ) : (
-            <ul className="space-y-3 sm:space-y-0 sm:divide-y sm:divide-admin-800/80">
-              <li className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4 sm:py-3 first:sm:pt-0">
-                <span className="text-admin-300 text-sm font-medium">JobRush API</span>
-                <span className="flex items-center gap-2 text-sm">
-                  {apiHealth.reachable && apiHealth.ok ? (
-                    <CheckCircleIcon className="w-5 h-5 text-emerald-400 shrink-0" />
-                  ) : (
-                    <XCircleIcon className="w-5 h-5 text-red-400 shrink-0" />
-                  )}
-                  <span className={apiHealth.reachable && apiHealth.ok ? 'text-emerald-300' : 'text-red-300'}>
-                    {statusLabel(apiHealth.reachable, apiHealth.ok)}
-                  </span>
-                  {apiHealth.reachable && (
-                    <span className="text-admin-500 tabular-nums">· {apiHealth.ms} ms</span>
-                  )}
-                  {!apiHealth.reachable && apiHealth.error && (
-                    <span className="text-admin-500 text-xs">({apiHealth.error})</span>
-                  )}
-                </span>
-              </li>
-              <li className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4 sm:py-3">
-                <span className="text-admin-300 text-sm font-medium">AI (Groq)</span>
-                <span className="text-sm text-admin-200">
-                  {!apiHealth.reachable
-                    ? '—'
-                    : apiHealth.llm
-                      ? 'Ready'
-                      : 'Not configured'}
-                </span>
-              </li>
-              <li className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-4 sm:py-3 last:sm:pb-0">
-                <span className="text-admin-300 text-sm font-medium">Text-to-speech</span>
-                <span className="text-sm text-admin-200">
-                  {!apiHealth.reachable
-                    ? '—'
-                    : apiHealth.tts
-                      ? 'Ready'
-                      : 'Not configured'}
-                </span>
-              </li>
-            </ul>
+            <>
+              <div className="sm:hidden space-y-4">
+                {buildServiceHealthRows(apiHealth, {
+                  firebaseOk: userMetrics.registered != null || reportCount != null,
+                  firebaseChecking: loadingFirebase,
+                }).map((row) => (
+                  <div
+                    key={row.key}
+                    className="rounded-xl border border-admin-800/90 bg-admin-950/40 p-4 space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-admin-200 text-sm font-medium">{row.name}</span>
+                      {row.tone === 'ok' ? (
+                        <CheckCircleIcon className="w-5 h-5 text-emerald-400 shrink-0" />
+                      ) : row.tone === 'bad' ? (
+                        <XCircleIcon className="w-5 h-5 text-red-400 shrink-0" />
+                      ) : row.tone === 'warn' ? (
+                        <SignalIcon className="w-5 h-5 text-amber-400 shrink-0" />
+                      ) : null}
+                    </div>
+                    <p className={`text-sm ${toneClass(row.tone)}`}>{row.status}</p>
+                    <dl className="grid grid-cols-1 gap-1.5 text-xs pt-1 border-t border-admin-800/60">
+                      <div>
+                        <dt className="text-admin-500">Quota</dt>
+                        <dd className="text-admin-300 leading-snug">{row.quota}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-admin-500">Remaining</dt>
+                        <dd className="text-admin-300 leading-snug">{row.remaining}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-admin-500">Resets</dt>
+                        <dd className="text-admin-300 leading-snug">{row.reset}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden sm:block overflow-x-auto -mx-1">
+                <table className="w-full text-sm text-left min-w-[640px]">
+                  <thead>
+                    <tr className="border-b border-admin-800/80 text-admin-500 text-xs uppercase tracking-wide">
+                      <th className="py-2 pr-4 font-medium">Service</th>
+                      <th className="py-2 pr-4 font-medium">Status</th>
+                      <th className="py-2 pr-4 font-medium">Quota</th>
+                      <th className="py-2 pr-4 font-medium">Remaining</th>
+                      <th className="py-2 font-medium">Resets</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-admin-800/70">
+                    {buildServiceHealthRows(apiHealth, {
+                      firebaseOk: userMetrics.registered != null || reportCount != null,
+                      firebaseChecking: loadingFirebase,
+                    }).map((row) => (
+                      <tr key={row.key} className="align-top">
+                        <td className="py-3 pr-4 text-admin-200 font-medium whitespace-nowrap">{row.name}</td>
+                        <td className="py-3 pr-4">
+                          <span className={`inline-flex items-center gap-1.5 ${toneClass(row.tone)}`}>
+                            {row.tone === 'ok' ? (
+                              <CheckCircleIcon className="w-4 h-4 shrink-0" />
+                            ) : row.tone === 'bad' ? (
+                              <XCircleIcon className="w-4 h-4 shrink-0" />
+                            ) : row.tone === 'warn' ? (
+                              <SignalIcon className="w-4 h-4 shrink-0" />
+                            ) : null}
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 text-admin-400 max-w-[14rem] leading-snug">{row.quota}</td>
+                        <td className="py-3 pr-4 text-admin-400 max-w-[14rem] leading-snug">{row.remaining}</td>
+                        <td className="py-3 text-admin-400 max-w-[14rem] leading-snug">{row.reset}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </section>

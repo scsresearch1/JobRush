@@ -15,6 +15,7 @@ const Dashboard = ({ onQuotaReached }) => {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
   const atsUsed = Number(user?.atsChecksUsed) || 0
   const mockUsed = Number(user?.mockInterviewsUsed) || 0
+  const quotaLocked = atsUsed >= QUOTA_ATS_MAX || mockUsed >= QUOTA_MOCK_MAX || user?.accessStatus === 'suspended'
 
   const features = [
     {
@@ -23,6 +24,7 @@ const Dashboard = ({ onQuotaReached }) => {
       title: 'Resume Upload & Parsing',
       description: 'Upload your CV and automatically extract skills, experience, education, and projects.',
       color: 'from-blue-500 to-cyan-500',
+      quotaReached: quotaLocked,
     },
     {
       to: '/ats-analysis',
@@ -30,7 +32,7 @@ const Dashboard = ({ onQuotaReached }) => {
       title: 'ATS Compatibility Score',
       description: `Evaluate your resume against ${MASS_HIRING_PROFILES.length} mass hiring companies and 10 universities. Get detailed analysis.`,
       color: 'from-indigo-500 to-purple-500',
-      quotaReached: atsUsed >= QUOTA_ATS_MAX,
+      quotaReached: quotaLocked,
       quotaType: 'ats',
     },
     {
@@ -39,6 +41,7 @@ const Dashboard = ({ onQuotaReached }) => {
       title: 'AI Resume Improvements',
       description: 'Get targeted suggestions and apply automatic corrections to optimize for ATS.',
       color: 'from-emerald-500 to-teal-500',
+      quotaReached: quotaLocked,
     },
     {
       to: '/sop-cover-letter',
@@ -46,6 +49,7 @@ const Dashboard = ({ onQuotaReached }) => {
       title: 'SOP & Cover Letter',
       description: 'Generate customized Statements of Purpose and cover letters from your resume.',
       color: 'from-amber-500 to-orange-500',
+      quotaReached: quotaLocked,
     },
     {
       to: '/mock-interview',
@@ -53,7 +57,7 @@ const Dashboard = ({ onQuotaReached }) => {
       title: 'AI HR Mock Interview',
       description: 'Practice with AI-powered HR interviews. Record responses and get performance analysis.',
       color: 'from-rose-500 to-pink-500',
-      quotaReached: mockUsed >= QUOTA_MOCK_MAX,
+      quotaReached: quotaLocked,
       quotaType: 'mock',
     },
   ]

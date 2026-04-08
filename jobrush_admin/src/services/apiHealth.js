@@ -17,6 +17,7 @@ function normalizeBase(url) {
  *   ms: number,
  *   llm?: boolean,
  *   tts?: boolean,
+ *   email?: boolean,
  *   error?: string
  * }>}
  */
@@ -41,6 +42,7 @@ export async function fetchJobRushApiHealth() {
       ms,
       llm: !!body.llm,
       tts: !!body.tts,
+      email: !!body.email,
     }
   } catch (e) {
     return {

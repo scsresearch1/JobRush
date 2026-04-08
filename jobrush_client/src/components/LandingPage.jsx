@@ -12,6 +12,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import DemoModal from './DemoModal'
+import LandingMobileGate from './LandingMobileGate'
 import AnimatedCounter from './AnimatedCounter'
 import { useHelpCenter } from '../context/HelpCenterContext'
 import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
@@ -349,6 +350,8 @@ const LandingPage = ({ onStartJourney }) => {
 
       {/* Demo Modal */}
       <DemoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
+
+      <LandingMobileGate />
     </div>
   )
 }

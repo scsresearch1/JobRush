@@ -394,6 +394,67 @@ export async function recordCouponRedemptionFromApproval(userRow) {
   })
 }
 
+/**
+ * Clears verified usage counters and payout totals for a coupon code.
+ * Keeps contract metadata so future approvals still work. Does not delete the coupon definition under `coupons/`.
+ */
+export async function resetCouponRedemptionStats(couponCode) {
+  const code = normalizeCouponCode(couponCode)
+  assertValidCouponCode(code)
+  const [couponSnap, redSnap] = await Promise.all([get(couponRef(code)), get(couponRedemptionRef(code))])
+  if (!couponSnap.exists() && !redSnap.exists()) {
+    throw new Error(`Nothing to reset for ${code}.`)
+  }
+  if (!redSnap.exists()) {
+    throw new Error(`No verified usage recorded for ${code} yet.`)
+  }
+
+  const coupon = couponSnap.exists() ? couponSnap.val() : {}
+  const prev = redSnap.val() || {}
+  const contractName =
+    coupon?.[COUPON_FIELDS.CONTRACT_NAME] || prev?.[COUPON_REDEMPTION_FIELDS.CONTRACT_NAME] || '—'
+  const discount = Math.max(
+    0,
+    Number(coupon?.[COUPON_FIELDS.DISCOUNT_AMOUNT] ?? prev?.[COUPON_REDEMPTION_FIELDS.DISCOUNT_AMOUNT] ?? 0) || 0
+  )
+  const payoutPerUser = Math.max(
+    0,
+    Number(
+      coupon?.[COUPON_FIELDS.CONTRACT_PAYMENT_PER_USER] ??
+        prev?.[COUPON_REDEMPTION_FIELDS.CONTRACT_PAYMENT_PER_USER] ??
+        0
+    ) || 0
+  )
+
+  await set(couponRedemptionRef(code), {
+    [COUPON_REDEMPTION_FIELDS.COUPON_CODE]: code,
+    [COUPON_REDEMPTION_FIELDS.CONTRACT_NAME]: contractName,
+    [COUPON_REDEMPTION_FIELDS.DISCOUNT_AMOUNT]: discount,
+    [COUPON_REDEMPTION_FIELDS.CONTRACT_PAYMENT_PER_USER]: payoutPerUser,
+    [COUPON_REDEMPTION_FIELDS.TIMES_USED_VERIFIED]: 0,
+    [COUPON_REDEMPTION_FIELDS.TOTAL_AMOUNT_COLLECTED]: 0,
+    [COUPON_REDEMPTION_FIELDS.TOTAL_CONTRACT_PAYOUT]: 0,
+    [COUPON_REDEMPTION_FIELDS.VERIFIED_USERS]: {},
+    [COUPON_REDEMPTION_FIELDS.UPDATED_AT]: new Date().toISOString(),
+  })
+}
+
+/**
+ * Removes the coupon contract (`coupons/{code}`) and redemption ledger (`couponRedemptions/{code}`) if present.
+ */
+export async function deleteCouponAndRedemptions(couponCode) {
+  const code = normalizeCouponCode(couponCode)
+  assertValidCouponCode(code)
+  const [couponSnap, redSnap] = await Promise.all([get(couponRef(code)), get(couponRedemptionRef(code))])
+  if (!couponSnap.exists() && !redSnap.exists()) {
+    throw new Error(`Coupon ${code} not found.`)
+  }
+  const tasks = []
+  if (couponSnap.exists()) tasks.push(remove(couponRef(code)))
+  if (redSnap.exists()) tasks.push(remove(couponRedemptionRef(code)))
+  await Promise.all(tasks)
+}
+
 export async function deleteInterviewReport(reportId) {
   await remove(interviewReportRef(reportId))
 }

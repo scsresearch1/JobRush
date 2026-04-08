@@ -32,7 +32,23 @@ const groq = process.env.GROQ_API_KEY
   ? new Groq({ apiKey: process.env.GROQ_API_KEY })
   : null
 
-const MODEL = 'llama-3.3-70b-versatile'
+/** Default: smaller/faster model to stay within Groq free-tier limits. Set GROQ_MODEL to override. */
+const GROQ_MODEL = String(process.env.GROQ_MODEL || 'llama-3.1-8b-instant').trim()
+/** Used only for full-resume JSON rewrite where 8B may truncate or break JSON. Set GROQ_MODEL_HEAVY= same as GROQ_MODEL to force one model everywhere. */
+const GROQ_MODEL_HEAVY = String(process.env.GROQ_MODEL_HEAVY || 'llama-3.3-70b-versatile').trim()
+
+const MAX_CHAT_TURNS = 8
+const MAX_CHAT_MSG_CHARS = 8000
+const RESUME_LLM_MAX_STR = 2000
+/** Groq completion ceiling for this app (avoid mid-stream cuts; models typically allow ≤ 8k). */
+const GROQ_MAX_COMPLETION_TOKENS = 8192
+const TOKENS_EXPLAIN_ATS = 2048
+const TOKENS_RECOMMENDATIONS = 2048
+const TOKENS_APPLY_CORRECTION = 8192
+const TOKENS_SOP = 2048
+const TOKENS_COVER_LETTER = 2048
+const TOKENS_INTERVIEW_TIPS = 2048
+const TOKENS_CHAT_REPLY = 2048
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 const ADMIN_API_SECRET = String(process.env.ADMIN_API_SECRET || '').trim()
 
@@ -85,33 +101,131 @@ async function sendResendMail({ from, to, subject, html, text, replyTo }) {
   return out?.data?.id || null
 }
 
-async function callGroq(systemPrompt, userPrompt, maxTokens = 1024) {
+function truncateStringsDeep(val, maxLen, seen = new WeakSet()) {
+  if (val == null) return val
+  if (typeof val === 'string') return val.length > maxLen ? `${val.slice(0, maxLen)}…` : val
+  if (typeof val !== 'object') return val
+  if (seen.has(val)) return val
+  seen.add(val)
+  if (Array.isArray(val)) return val.map((x) => truncateStringsDeep(x, maxLen, seen))
+  const o = {}
+  for (const [k, v] of Object.entries(val)) {
+    o[k] = truncateStringsDeep(v, maxLen, seen)
+  }
+  return o
+}
+
+/** Compact JSON (no whitespace) to minimize prompt tokens. */
+function compactJson(obj) {
+  return JSON.stringify(obj)
+}
+
+async function groqCompleteMessages(messages, maxTokens, model, temperature) {
   if (!groq) {
     throw new Error('AI service not configured. Add the required API key to your environment.')
   }
   const completion = await groq.chat.completions.create({
-    model: MODEL,
-    messages: [
+    model,
+    messages,
+    max_tokens: maxTokens,
+    temperature,
+  })
+  const ch = completion.choices[0]
+  return {
+    content: String(ch?.message?.content ?? '').trim(),
+    finishReason: ch?.finish_reason || 'unknown',
+  }
+}
+
+/**
+ * If output still ends because of max_tokens, remove the partial tail: prefer dropping the last line;
+ * for a single block, trim to the last full sentence; never return a visibly cut-off fragment.
+ */
+function removeTruncatedSuffix(text) {
+  if (!text) return text
+  const lines = text.split('\n')
+  const nonEmptyLineIndexes = []
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim()) nonEmptyLineIndexes.push(i)
+  }
+  if (nonEmptyLineIndexes.length >= 2) {
+    const dropAt = nonEmptyLineIndexes[nonEmptyLineIndexes.length - 1]
+    const out = lines.filter((_, i) => i !== dropAt)
+    return out.join('\n').trimEnd()
+  }
+  const t = text.trim()
+  for (let i = t.length - 1; i >= 0; i--) {
+    const c = t[i]
+    if (c === '.' || c === '!' || c === '?') {
+      const before = t.slice(0, i + 1).trim()
+      if (before.length >= 24) return before
+    }
+  }
+  return ''
+}
+
+/**
+ * @param {{ stripPartialTail?: boolean }} opts - If true (default), strip incomplete last line/sentence when still truncated after retry. Set false for JSON outputs.
+ */
+async function groqComplete(messages, maxTokens, model, temperature, opts = {}) {
+  const stripPartialTail = opts.stripPartialTail !== false
+  let { content, finishReason } = await groqCompleteMessages(messages, maxTokens, model, temperature)
+  if (finishReason === 'length' && maxTokens < GROQ_MAX_COMPLETION_TOKENS) {
+    const bumped = Math.min(Math.max(maxTokens * 2, maxTokens + 1024), GROQ_MAX_COMPLETION_TOKENS)
+    if (bumped > maxTokens) {
+      const second = await groqCompleteMessages(messages, bumped, model, temperature)
+      content = second.content
+      finishReason = second.finishReason
+    }
+  }
+  if (stripPartialTail && finishReason === 'length') {
+    content = removeTruncatedSuffix(content)
+  }
+  return { content, finishReason }
+}
+
+async function callGroq(systemPrompt, userPrompt, maxTokens = TOKENS_EXPLAIN_ATS, model = GROQ_MODEL, jsonOutput = false) {
+  const { content } = await groqComplete(
+    [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
-    max_tokens: maxTokens,
-    temperature: 0.3,
-  })
-  return completion.choices[0]?.message?.content?.trim() || ''
+    maxTokens,
+    model,
+    0.25,
+    { stripPartialTail: !jsonOutput }
+  )
+  return content
 }
 
-async function chatGroq(messages, maxTokens = 1024) {
-  if (!groq) {
-    throw new Error('AI service not configured. Add the required API key to your environment.')
+async function chatGroq(messages, maxTokens = TOKENS_CHAT_REPLY, model = GROQ_MODEL) {
+  const { content } = await groqComplete(messages, maxTokens, model, 0.4, { stripPartialTail: true })
+  return content
+}
+
+/** Parse a JSON array from model output; if truncated, drop incomplete trailing objects only (never return half an object). */
+function parseJsonArraySalvage(raw) {
+  if (!raw || typeof raw !== 'string') return []
+  const start = raw.indexOf('[')
+  if (start === -1) return []
+  const s = raw.slice(start)
+  const endBracket = s.lastIndexOf(']')
+  if (endBracket !== -1) {
+    try {
+      return JSON.parse(s.slice(0, endBracket + 1))
+    } catch {
+      /* fall through */
+    }
   }
-  const completion = await groq.chat.completions.create({
-    model: MODEL,
-    messages,
-    max_tokens: maxTokens,
-    temperature: 0.5,
-  })
-  return completion.choices[0]?.message?.content?.trim() || ''
+  let i = s.lastIndexOf('}')
+  while (i > 1) {
+    try {
+      return JSON.parse(`${s.slice(0, i + 1)}]`)
+    } catch {
+      i = s.lastIndexOf('}', i - 1)
+    }
+  }
+  return []
 }
 
 /**
@@ -130,33 +244,30 @@ app.post('/api/explain-ats', async (req, res) => {
       breakdown = {},
     } = req.body
 
-    const systemPrompt = `You are an ATS expert. Explain resume evaluation results clearly. Use plain text only—NO asterisks, NO markdown, NO bullet symbols. Write each point on its own line. Never output empty lines. Focus on strengths, weaknesses, and improvement suggestions.`
-    const userPrompt = `Explain why the ATS score for ${entity} is ${score}%.
+    const systemPrompt = `ATS expert. Plain text only: no markdown, no asterisks. One idea per line. Be concise.`
+    const userPrompt = `Score ${score}% for ${entity}.
+Matched mandatory: ${matchedMandatory.join(', ') || 'None'}
+Missing mandatory: ${missingMandatory.join(', ') || 'None'}
+Matched preferred: ${matchedPreferred.join(', ') || 'None'}
+Missing preferred: ${missingPreferred.join(', ') || 'None'}
+Breakdown: mand ${breakdown.mandatory_skill_score ?? 'N/A'}% pref ${breakdown.preferred_skill_score ?? 'N/A'}% proj ${breakdown.project_relevance ?? 'N/A'} edu ${breakdown.education_match ?? 'N/A'} fmt ${breakdown.formatting_score ?? 'N/A'}
 
-Input data:
-- Matched mandatory skills: ${matchedMandatory.join(', ') || 'None'}
-- Missing mandatory skills: ${missingMandatory.join(', ') || 'None'}
-- Matched preferred skills: ${matchedPreferred.join(', ') || 'None'}
-- Missing preferred skills: ${missingPreferred.join(', ') || 'None'}
-- Score breakdown: Mandatory ${breakdown.mandatory_skill_score ?? 'N/A'}%, Preferred ${breakdown.preferred_skill_score ?? 'N/A'}%, Projects ${breakdown.project_relevance ?? 'N/A'}, Education ${breakdown.education_match ?? 'N/A'}, Formatting ${breakdown.formatting_score ?? 'N/A'}
-
-Provide each point on a new line. Format:
+Format (short lines):
 Strengths:
-- Point one
-- Point two
+- (2-3)
 
 Weaknesses:
-- Point one
-- Point two
+- (2-3)
 
-Top 3 improvement suggestions:
-- Suggestion one
-- Suggestion two
-- Suggestion three
+Suggestions:
+- (exactly 3)`
 
-Use plain dashes or nothing. No asterisks. No numbers.`
-
-    const explanation = await callGroq(systemPrompt, userPrompt)
+    const explanation = await callGroq(systemPrompt, userPrompt, TOKENS_EXPLAIN_ATS)
+    if (!explanation || !String(explanation).trim()) {
+      return res.status(503).json({
+        error: 'We could not produce a complete explanation. Please try again.',
+      })
+    }
     res.json({ explanation })
   } catch (err) {
     console.error('explain-ats error:', err)
@@ -175,34 +286,34 @@ app.post('/api/recommendations', async (req, res) => {
   try {
     const { resume, evaluation } = req.body
 
-    const systemPrompt = `You are a career coach and resume expert. Generate specific, actionable resume improvement recommendations. Each recommendation should have: section, current (what they have), suggestion (what to change/add), and impact (High/Medium). Be specific—reference actual skills, companies, or projects from the resume. Prioritize by impact. In the suggestion field, use clear bullet points with real content—never output empty bullets or orphaned asterisks.`
-    const userPrompt = `Based on this resume and ATS evaluation, generate 4-6 improvement recommendations.
+    const systemPrompt = `Resume coach. Output ONLY a JSON array of 3-4 objects: section, current, suggestion, impact (High|Medium). Short suggestion text. No markdown.`
+    const skills = (resume?.skills || []).slice(0, 35).join(', ')
+    const exp = (resume?.experience || [])
+      .slice(0, 6)
+      .map((e) => `${e.role || e.title}@${e.company}`)
+      .join('; ')
+    const userPrompt = `Resume: ${resume?.name || '—'} | skills: ${skills || 'None'} | exp: ${exp || 'None'} | edu: ${(resume?.education || []).slice(0, 3).map((e) => e.degree).join('; ') || 'None'} | projects: ${(resume?.projects || []).slice(0, 5).map((p) => p.name).join('; ') || 'None'}
+ATS avg: mass ${evaluation?.summary?.avgMassHiring ?? 'N/A'}% maang ${evaluation?.summary?.avgMaang ?? 'N/A'}% ivy ${evaluation?.summary?.avgIvyLeague ?? 'N/A'}
+Missing skills (sample): ${[...new Set((evaluation?.scores?.all || []).flatMap((s) => s.missing_mandatory || []))].slice(0, 8).join(', ') || 'N/A'}
+JSON only: [{"section":"Skills","current":"...","suggestion":"...","impact":"High"},...]`
 
-Resume summary:
-- Name: ${resume?.name || '—'}
-- Email: ${resume?.email || '—'}
-- Phone: ${resume?.phone || '—'}
-- Skills: ${(resume?.skills || []).join(', ') || 'None'}
-- Experience: ${(resume?.experience || []).map(e => `${e.role || e.title} at ${e.company}`).join('; ') || 'None'}
-- Education: ${(resume?.education || []).map(e => e.degree).join('; ') || 'None'}
-- Projects: ${(resume?.projects || []).map(p => p.name).join('; ') || 'None'}
-
-ATS evaluation summary:
-- Average scores: Mass hiring ${evaluation?.summary?.avgMassHiring ?? 'N/A'}%, MAANG ${evaluation?.summary?.avgMaang ?? 'N/A'}%, Ivy League ${evaluation?.summary?.avgIvyLeague ?? 'N/A'}%
-- Common missing skills across profiles: ${[...new Set((evaluation?.scores?.all || []).flatMap(s => s.missing_mandatory || []))].slice(0, 10).join(', ') || 'N/A'}
-
-Respond in JSON array format only, no other text:
-[{"section":"Skills","current":"...","suggestion":"...","impact":"High"}, ...]`
-
-    const raw = await callGroq(systemPrompt, userPrompt)
-    let recommendations = []
-    try {
-      const jsonMatch = raw.match(/\[[\s\S]*\]/)
-      if (jsonMatch) {
-        recommendations = JSON.parse(jsonMatch[0])
-      }
-    } catch {
-      recommendations = [{ section: 'General', current: '-', suggestion: raw.slice(0, 200), impact: 'Medium' }]
+    const raw = await callGroq(systemPrompt, userPrompt, TOKENS_RECOMMENDATIONS, GROQ_MODEL, true)
+    let recommendations = parseJsonArraySalvage(raw).filter(
+      (r) =>
+        r &&
+        typeof r === 'object' &&
+        String(r.section || '').trim() &&
+        String(r.suggestion || '').trim()
+    )
+    if (!Array.isArray(recommendations) || recommendations.length === 0) {
+      recommendations = [
+        {
+          section: 'General',
+          current: '—',
+          suggestion: 'We could not load complete recommendations. Please try again in a moment.',
+          impact: 'Medium',
+        },
+      ]
     }
     res.json({ recommendations })
   } catch (err) {
@@ -247,33 +358,32 @@ app.post('/api/apply-correction', async (req, res) => {
       return res.status(400).json({ error: 'resume and recommendation required' })
     }
 
-    const systemPrompt = `You are a resume editor. Given a resume (JSON) and an improvement suggestion, return the modified resume as valid JSON.
+    const systemPrompt = `Resume editor. Input: resume JSON + one suggestion. Output: single valid JSON object only—same schema as input (name,email,phone,skills,experience,education,projects). Apply ONLY that suggestion to that section; keep everything else identical. Never drop entries.`
 
-CRITICAL RULES:
-- Apply ONLY the suggested change to the indicated section. Leave all other sections UNCHANGED.
-- You MUST include every field from the original resume: name, email, phone, skills, experience, education, projects.
-- NEVER omit name, email, or phone. Copy them exactly from the input.
-- NEVER remove or drop any experience entry, education entry, or project. Only ADD or EDIT within the suggested section.
-- Output the complete resume JSON only, no other text.`
+    const resumeCompact = compactJson(truncateStringsDeep(resume, RESUME_LLM_MAX_STR))
+    const userPrompt = `Resume:${resumeCompact}
+Section: ${recommendation.section}
+Suggestion: ${String(recommendation.suggestion || '').slice(0, 2500)}
+Return full resume JSON only.`
 
-    const userPrompt = `Resume:
-${JSON.stringify(resume, null, 2)}
-
-Suggestion (${recommendation.section}): ${recommendation.suggestion}
-
-Return the modified resume as valid JSON. Apply the suggestion. Preserve name, email, phone, and all other entries. Output JSON only.`
-
-    // Full resume JSON in / out needs a large completion budget (default 1024 truncates and breaks JSON).
-    const raw = await callGroq(systemPrompt, userPrompt, 8192)
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ]
+    const { content: raw } = await groqComplete(messages, TOKENS_APPLY_CORRECTION, GROQ_MODEL_HEAVY, 0.25, {
+      stripPartialTail: false,
+    })
     let modified = resume
-    try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        modified = JSON.parse(jsonMatch[0])
-        modified = mergeResumePreservingOriginal(resume, modified)
+    if (raw) {
+      try {
+        const jsonMatch = raw.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          modified = JSON.parse(jsonMatch[0])
+          modified = mergeResumePreservingOriginal(resume, modified)
+        }
+      } catch {
+        modified = resume
       }
-    } catch {
-      modified = resume
     }
     res.json({ resume: modified })
   } catch (err) {
@@ -294,21 +404,20 @@ app.post('/api/generate-sop', async (req, res) => {
       return res.status(400).json({ error: 'resume required' })
     }
 
-    const systemPrompt = `You are an expert academic advisor. Write compelling Statements of Purpose for university admissions. Use plain text only—NO asterisks, NO markdown, NO bullet symbols. Write in formal paragraphs. Reference the candidate's actual resume data. Be specific and authentic.`
-    const userPrompt = `Write a Statement of Purpose (2-4 paragraphs) for this candidate:
+    const systemPrompt = `Academic advisor. Plain text SOP: formal paragraphs, no markdown. Be concise.`
+    const userPrompt = `SOP (2-3 short paragraphs) for ${resume.name || 'candidate'} → ${targetProgram || 'Graduate program'} @ ${targetUniversity || 'university'}.
+Edu: ${(resume.education || []).slice(0, 3).map((e) => `${e.degree} ${e.institution || ''}`).join('; ') || '—'}
+Exp: ${(resume.experience || []).slice(0, 4).map((e) => `${e.role || e.title} ${e.company}`).join('; ') || '—'}
+Skills: ${(resume.skills || []).slice(0, 12).join(', ') || '—'}
+Projects: ${(resume.projects || []).slice(0, 4).map((p) => p.name).join('; ') || '—'}
+Cover: fit for program, background, goals. Text only.`
 
-Candidate resume:
-- Name: ${resume.name || '—'}
-- Education: ${(resume.education || []).map(e => `${e.degree} from ${e.institution}`).join('; ') || '—'}
-- Experience: ${(resume.experience || []).map(e => `${e.role || e.title} at ${e.company}`).join('; ') || '—'}
-- Skills: ${(resume.skills || []).slice(0, 15).join(', ') || '—'}
-- Projects: ${(resume.projects || []).map(p => p.name).join('; ') || '—'}
-
-Target: ${targetProgram || 'Graduate program'} at ${targetUniversity || 'the university'}
-
-Include: 1) Why this program/university, 2) Relevant background and achievements, 3) Career goals and how this program fits. Output the SOP text only, no other text.`
-
-    const raw = await callGroq(systemPrompt, userPrompt, 1500)
+    const raw = await callGroq(systemPrompt, userPrompt, TOKENS_SOP)
+    if (!raw || !String(raw).trim()) {
+      return res.status(503).json({
+        error: 'We could not produce a complete statement. Please try again.',
+      })
+    }
     res.json({ content: raw })
   } catch (err) {
     console.error('generate-sop error:', err)
@@ -331,22 +440,20 @@ app.post('/api/generate-cover-letter', async (req, res) => {
       return res.status(400).json({ error: 'resume required' })
     }
 
-    const systemPrompt = `You are an expert career coach. Write professional cover letters for job applications. Use plain text only—NO asterisks, NO markdown. Write in formal paragraphs with a proper greeting and sign-off. Reference the candidate's actual resume data. Be specific and authentic.`
-    const userPrompt = `Write a cover letter (3-5 paragraphs) for this candidate:
+    const systemPrompt = `Career coach. Plain text cover letter: greeting, body, "Sincerely," + name. No markdown. Concise.`
+    const userPrompt = `Cover letter for ${resume.name || '—'} applying to ${targetRole || 'role'} at ${targetCompany || 'company'}.
+Skills: ${(resume.skills || []).slice(0, 12).join(', ') || '—'}
+Exp: ${(resume.experience || []).slice(0, 4).map((e) => `${e.role || e.title} @ ${e.company}`).join('; ') || '—'}
+Edu: ${(resume.education || []).slice(0, 2).map((e) => e.degree).join('; ') || '—'}
+Projects: ${(resume.projects || []).slice(0, 3).map((p) => p.name).join('; ') || '—'}
+4 short paragraphs max. End Sincerely, ${resume.name || 'Candidate'}. Text only.`
 
-Candidate resume:
-- Name: ${resume.name || '—'}
-- Email: ${resume.email || '—'}
-- Skills: ${(resume.skills || []).slice(0, 15).join(', ') || '—'}
-- Experience: ${(resume.experience || []).map(e => `${e.role || e.title} at ${e.company}${e.duration ? ' (' + e.duration + ')' : ''}`).join('; ') || '—'}
-- Education: ${(resume.education || []).map(e => e.degree).join('; ') || '—'}
-- Projects: ${(resume.projects || []).map(p => p.name).join('; ') || '—'}
-
-Target: ${targetRole || 'the position'} at ${targetCompany || 'the company'}
-
-Include: 1) Opening paragraph expressing interest, 2) Relevant background and key achievements, 3) Why you're a fit for the role/company, 4) Closing with call to action. End with "Sincerely," followed by the candidate's name. Output the cover letter text only, no other text.`
-
-    const raw = await callGroq(systemPrompt, userPrompt, 1500)
+    const raw = await callGroq(systemPrompt, userPrompt, TOKENS_COVER_LETTER)
+    if (!raw || !String(raw).trim()) {
+      return res.status(503).json({
+        error: 'We could not produce a complete cover letter. Please try again.',
+      })
+    }
     res.json({ content: raw })
   } catch (err) {
     console.error('generate-cover-letter error:', err)
@@ -422,7 +529,7 @@ app.post('/api/interview-recommendations', async (req, res) => {
     const hs = safeNum(overall.avgHeadStability, 0) * 100
     const es = safeNum(overall.avgEmotionalStability, 1) * 100
     const br = safeNum(overall.avgBlinkRate, 0)
-    const systemPrompt = `You are an expert interview coach. Based on behavioral metrics from a mock interview (eye-contact, face visibility, head stability, blink rate, emotional expression), generate 4-6 specific, actionable correction tips. Each tip should be: 1) Short and punchy (one sentence), 2) Tied to a specific metric when relevant, 3) Practical and easy to implement. Use emotion data to give expression-specific advice (e.g. high fear/surprise→calm nerves; low happy→slight smile; stress indicators→breathing). Use a friendly, encouraging tone. Output JSON array only: [{"tip":"...","area":"eye-contact|visibility|stability|expression|general","priority":1}] where priority 1=highest. No other text.`
+    const systemPrompt = `Interview coach. From metrics below, output ONLY JSON array of 4 tips: {"tip":"one sentence","area":"eye-contact|visibility|stability|expression|general","priority":1}. priority 1=most important. Encouraging tone.`
     const safeFix = (n, d) => {
       const x = (n != null && Number.isFinite(Number(n))) ? Number(n) : 0
       return x.toFixed(typeof d === 'number' ? d : 1)
@@ -432,40 +539,35 @@ app.post('/api/interview-recommendations', async (req, res) => {
       .filter(([, v]) => v > 0.02)
       .map(([k, v]) => `${k} ${safeFix((v ?? 0) * 100, 0)}%`)
       .join(', ') || 'N/A'
-    const qSummaries = questionTimelines.map((q, i) => {
+    const qSummaries = questionTimelines
+      .slice(0, 8)
+      .map((q, i) => {
       const s = q?.timeline?.summary && typeof q.timeline.summary === 'object' ? q.timeline.summary : {}
       const qec = safeFix(safeNum(s.meanEyeContactRatio, 0) * 100, 0)
       const qfv = safeFix(safeNum(s.meanFaceVisibility, 0) * 100, 0)
       const qDist = s.questionAnalysis?.emotionalProbabilityDistribution || {}
       const qEmo = (Object.entries(qDist).filter(([, v]) => v > 0.1).map(([k, v]) => `${k} ${safeFix((v ?? 0) * 100, 0)}%`).join(', ') || s.dominantEmotion) ?? 'N/A'
-      return `Q${i + 1} (${q?.type ?? 'unknown'}): confidence ${s.confidence ?? 0}, eye-contact ${qec}%, visibility ${qfv}%, emotions: ${qEmo}`
-    }).join('; ') || 'None'
+      return `Q${i + 1} (${q?.type ?? 'unknown'}): conf ${s.confidence ?? 0} ec ${qec}% vis ${qfv}% ${qEmo}`
+    })
+      .join('; ') || 'None'
     const posRatio = safeFix((overall.positiveExpressionRatio ?? 1) * 100, 0)
     const stressRatio = safeFix((overall.stressIndicatorRatio ?? 0) * 100, 0)
-    const userPrompt = `Behavioral metrics:
-- Visual Confidence score: ${overall.confidence ?? 0}/100
-- Eye-contact ratio: ${safeFix(ec, 1)}%
-- Face visibility: ${safeFix(fv, 1)}%
-- Head stability: ${safeFix(hs, 1)}%
-- Emotional stability: ${safeFix(es, 1)}%
-- Blink rate: ${safeFix(br, 2)}/s
-- Positive expression ratio (neutral+happy): ${posRatio}%
-- Stress indicators (fear+anger+sadness): ${stressRatio}%
-- Emotion distribution: ${emotionStr}
+    const userPrompt = `Conf ${overall.confidence ?? 0}/100 | ec ${safeFix(ec, 1)}% | vis ${safeFix(fv, 1)}% | head ${safeFix(hs, 1)}% | emo stab ${safeFix(es, 1)}% | blink ${safeFix(br, 2)}/s | pos ${posRatio}% | stress ${stressRatio}% | dist: ${emotionStr}
+Per Q: ${qSummaries}
+JSON array 4 tips.`
 
-Per-question summaries: ${qSummaries}
-
-Generate 4-6 correction tips as JSON array. Be specific to these metrics. Use emotion data for expression-related tips.`
-
-    const raw = await callGroq(systemPrompt, userPrompt)
-    let recommendations = []
-    try {
-      const jsonMatch = raw.match(/\[[\s\S]*\]/)
-      if (jsonMatch) {
-        recommendations = JSON.parse(jsonMatch[0])
-      }
-    } catch {
-      recommendations = [{ tip: raw.slice(0, 150) || 'Practice maintaining eye contact and steady posture.', area: 'general', priority: 1 }]
+    const raw = await callGroq(systemPrompt, userPrompt, TOKENS_INTERVIEW_TIPS, GROQ_MODEL, true)
+    let recommendations = parseJsonArraySalvage(raw).filter(
+      (r) => r && typeof r === 'object' && String(r.tip || '').trim()
+    )
+    if (!Array.isArray(recommendations) || recommendations.length === 0) {
+      recommendations = [
+        {
+          tip: 'Practice maintaining eye contact and a steady posture while speaking clearly.',
+          area: 'general',
+          priority: 1,
+        },
+      ]
     }
     res.json({ recommendations })
   } catch (err) {
@@ -477,20 +579,9 @@ Generate 4-6 correction tips as JSON array. Be specific to these metrics. Use em
   }
 })
 
-const SELECTRA_SYSTEM = `You are Selectra, the friendly Help Center assistant for JobRush.ai, a career acceleration platform.
-
-Your role:
-- Answer job-related questions: resume tips, ATS optimization, interview preparation, career advice, cover letters, SOPs, and job search strategies.
-- Answer questions about JobRush.ai: what the platform does, its features (resume upload, ATS scoring, mock interviews, SOP & cover letter generation), how to get started, and general usage.
-- Be helpful, concise, and professional. Use clear paragraphs. You may use bullet points when listing items.
-- Keep responses focused and reasonably brief unless the user asks for detail.
-
-CRITICAL - You must NEVER disclose:
-- Any LLM, AI model, or API provider names (e.g. Groq, Llama, GPT, Claude, etc.)
-- Technology stack, frameworks, programming languages, or implementation details
-- How the system is built or what powers it internally
-
-If asked about technology, architecture, or "what AI" you use, politely decline: "I'm not able to discuss technical implementation details. I'm here to help with career advice and questions about JobRush.ai. How can I assist you?"`
+const SELECTRA_SYSTEM = `You are Selectra, JobRush.ai help assistant (careers: resumes, ATS, interviews, cover letters, SOPs, job search). Also explain JobRush features briefly.
+Be concise (short paragraphs; bullets OK for lists). Do not ramble.
+Never name AI vendors/models or reveal stack/code. If asked how you work technically, say you can't discuss implementation and offer career help instead.`
 
 /**
  * POST /api/chat - Selectra chatbot
@@ -505,13 +596,19 @@ app.post('/api/chat', async (req, res) => {
     }
     const trimmed = messages
       .filter((m) => m && typeof m.role === 'string' && typeof m.content === 'string')
-      .map((m) => ({ role: m.role, content: String(m.content).trim().slice(0, 8000) }))
+      .map((m) => ({ role: m.role, content: String(m.content).trim().slice(0, MAX_CHAT_MSG_CHARS) }))
       .filter((m) => m.content.length > 0)
     if (trimmed.length === 0) {
       return res.status(400).json({ error: 'messages must have role and content' })
     }
-    const fullMessages = [{ role: 'system', content: SELECTRA_SYSTEM }, ...trimmed]
-    const reply = await chatGroq(fullMessages, 1024)
+    const recent = trimmed.length > MAX_CHAT_TURNS ? trimmed.slice(-MAX_CHAT_TURNS) : trimmed
+    const fullMessages = [{ role: 'system', content: SELECTRA_SYSTEM }, ...recent]
+    const reply = await chatGroq(fullMessages, TOKENS_CHAT_REPLY)
+    if (!reply || !String(reply).trim()) {
+      return res.status(503).json({
+        error: 'We could not produce a complete reply. Please try again.',
+      })
+    }
     res.json({ reply })
   } catch (err) {
     console.error('chat error:', err)
@@ -712,5 +809,9 @@ const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
   console.log(`JobRush API running on http://localhost:${PORT}`)
   console.log(`[email] New-user/payment alerts → ${ADMIN_NOTIFY_EMAIL} (override with ADMIN_NOTIFY_EMAIL)`)
-  if (!groq) console.warn('Warning: API key not set. AI features will return errors.')
+  if (groq) {
+    console.log(`[groq] Models: default=${GROQ_MODEL} apply-correction=${GROQ_MODEL_HEAVY} (set GROQ_MODEL / GROQ_MODEL_HEAVY to override)`)
+  } else {
+    console.warn('Warning: API key not set. AI features will return errors.')
+  }
 })

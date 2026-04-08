@@ -39,7 +39,7 @@ export function computePostEmailFlow(firebaseRow) {
   }
   if (accessStatus === 'suspended') return { kind: 'repayment' }
   if (accessStatus === 'active') {
-    if (ats >= QUOTA_ATS_MAX && mock >= QUOTA_MOCK_MAX) return { kind: 'repayment' }
+    if (ats >= QUOTA_ATS_MAX || mock >= QUOTA_MOCK_MAX) return { kind: 'repayment' }
     return { kind: 'app' }
   }
   return { kind: 'payment_offer' }
@@ -55,7 +55,7 @@ export function computeStartJourneyFlow(user) {
   if (hasAppAccess(user)) {
     const ats = Number(user.atsChecksUsed) || 0
     const mock = Number(user.mockInterviewsUsed) || 0
-    if (ats >= QUOTA_ATS_MAX && mock >= QUOTA_MOCK_MAX) {
+    if (ats >= QUOTA_ATS_MAX || mock >= QUOTA_MOCK_MAX) {
       return { kind: 'repayment', email: user.email }
     }
     return { kind: 'app' }

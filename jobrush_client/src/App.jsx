@@ -20,13 +20,29 @@ import PaymentAccessModal from './components/PaymentAccessModal'
 import PresenceHeartbeat from './components/PresenceHeartbeat'
 import LoadTestPage from '@jobrush/testing-engine/LoadTestPage.jsx'
 import { hasAppAccess } from './utils/access.js'
-import { getUser } from './services/database.js'
+import { getUser, syncUserFieldsToFirebase } from './services/database.js'
 import { mapFirebaseUserToLocal, computeStartJourneyFlow } from './utils/journeyState.js'
+import { QUOTA_ATS_MAX, QUOTA_MOCK_MAX } from './utils/quotas.js'
 
 function ProtectedRoute({ children }) {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
   if (!hasAppAccess(user)) {
     return <Navigate to="/" replace />
+  }
+  return children
+}
+
+function isQuotaLockedUser(user) {
+  if (!user || typeof user !== 'object') return false
+  const ats = Number(user.atsChecksUsed) || 0
+  const mock = Number(user.mockInterviewsUsed) || 0
+  return user.accessStatus === 'suspended' || ats >= QUOTA_ATS_MAX || mock >= QUOTA_MOCK_MAX
+}
+
+function FeatureRoute({ children }) {
+  const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
+  if (isQuotaLockedUser(user)) {
+    return <Navigate to="/dashboard" replace />
   }
   return children
 }
@@ -49,9 +65,15 @@ function App() {
       getUser(uid)
         .then((data) => {
           if (!data) return
-          const merged = {
+          let merged = {
             ...u,
             ...mapFirebaseUserToLocal(data, uid, u),
+          }
+          const ats = Number(merged.atsChecksUsed) || 0
+          const mock = Number(merged.mockInterviewsUsed) || 0
+          if (merged.accessStatus === 'active' && (ats >= QUOTA_ATS_MAX || mock >= QUOTA_MOCK_MAX)) {
+            merged = { ...merged, accessStatus: 'suspended' }
+            syncUserFieldsToFirebase(uid, { accessStatus: 'suspended' }).catch(() => {})
           }
           localStorage.setItem('jobRush_user', JSON.stringify(merged))
         })
@@ -91,7 +113,13 @@ function App() {
       try {
         const data = await getUser(uid)
         if (data) {
-          const merged = { ...user, ...mapFirebaseUserToLocal(data, uid, user) }
+          let merged = { ...user, ...mapFirebaseUserToLocal(data, uid, user) }
+          const ats = Number(merged.atsChecksUsed) || 0
+          const mock = Number(merged.mockInterviewsUsed) || 0
+          if (merged.accessStatus === 'active' && (ats >= QUOTA_ATS_MAX || mock >= QUOTA_MOCK_MAX)) {
+            merged = { ...merged, accessStatus: 'suspended' }
+            syncUserFieldsToFirebase(uid, { accessStatus: 'suspended' }).catch(() => {})
+          }
           localStorage.setItem('jobRush_user', JSON.stringify(merged))
           user = merged
         }
@@ -225,7 +253,9 @@ function AppContent({
           path="/resume-upload"
           element={
             <ProtectedRoute>
-              <Layout><ResumeUpload /></Layout>
+              <FeatureRoute>
+                <Layout><ResumeUpload /></Layout>
+              </FeatureRoute>
             </ProtectedRoute>
           }
         />
@@ -233,7 +263,9 @@ function AppContent({
           path="/ats-analysis"
           element={
             <ProtectedRoute>
-              <Layout><ATSAnalysis /></Layout>
+              <FeatureRoute>
+                <Layout><ATSAnalysis /></Layout>
+              </FeatureRoute>
             </ProtectedRoute>
           }
         />
@@ -241,7 +273,9 @@ function AppContent({
           path="/resume-improvements"
           element={
             <ProtectedRoute>
-              <Layout><ResumeImprovements /></Layout>
+              <FeatureRoute>
+                <Layout><ResumeImprovements /></Layout>
+              </FeatureRoute>
             </ProtectedRoute>
           }
         />
@@ -249,7 +283,9 @@ function AppContent({
           path="/sop-cover-letter"
           element={
             <ProtectedRoute>
-              <Layout><SOPCoverLetter /></Layout>
+              <FeatureRoute>
+                <Layout><SOPCoverLetter /></Layout>
+              </FeatureRoute>
             </ProtectedRoute>
           }
         />
@@ -257,7 +293,9 @@ function AppContent({
           path="/mock-interview"
           element={
             <ProtectedRoute>
-              <Layout><MockInterview /></Layout>
+              <FeatureRoute>
+                <Layout><MockInterview /></Layout>
+              </FeatureRoute>
             </ProtectedRoute>
           }
         />
@@ -265,7 +303,9 @@ function AppContent({
           path="/profile"
           element={
             <ProtectedRoute>
-              <Layout><Profile /></Layout>
+              <FeatureRoute>
+                <Layout><Profile /></Layout>
+              </FeatureRoute>
             </ProtectedRoute>
           }
         />

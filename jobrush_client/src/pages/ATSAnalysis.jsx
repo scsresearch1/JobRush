@@ -168,7 +168,8 @@ const ATSAnalysis = () => {
   const maangScores = evaluation?.scores?.maang?.reduce((acc, s) => ({ ...acc, [s.entity]: s.score }), {}) ?? {}
   const ivyLeagueScores = evaluation?.scores?.ivyLeague?.reduce((acc, s) => ({ ...acc, [s.entity]: s.score }), {}) ?? {}
 
-  const selectedDetail = selectedTarget && evaluation?.details?.[selectedTarget]
+  const activeTarget = selectedTarget || evaluation?.scores?.all?.[0]?.entity || null
+  const selectedDetail = activeTarget && evaluation?.details?.[activeTarget]
   const compositeScore = evaluation?.scores?.all?.length
     ? Math.round(evaluation.scores.all.reduce((s, c) => s + c.score, 0) / evaluation.scores.all.length * 10) / 10
     : 0
@@ -213,6 +214,18 @@ const ATSAnalysis = () => {
     if (score >= 65) return 'bg-amber-500'
     return 'bg-red-500'
   }
+
+  const pieDataRaw = analysisBreakdown.map((d) => ({
+    ...d,
+    contribution: Number.isFinite(Number(d.contribution)) ? Number(d.contribution) : 0,
+  }))
+  const totalContribution = pieDataRaw.reduce((sum, d) => sum + d.contribution, 0)
+  const pieData = totalContribution > 0
+    ? pieDataRaw
+    : analysisBreakdown.map((d) => ({
+        ...d,
+        contribution: Number(String(d.weight || '').replace('%', '')) || 0,
+      }))
 
   if (loading) {
     return (
@@ -488,7 +501,7 @@ const ATSAnalysis = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={analysisBreakdown}
+                        data={pieData}
                         dataKey="contribution"
                         nameKey="dimension"
                         cx="50%"
@@ -496,13 +509,20 @@ const ATSAnalysis = () => {
                         innerRadius={50}
                         outerRadius={80}
                         paddingAngle={2}
-                        label={({ contribution }) => `${contribution.toFixed(0)}`}
+                        label={({ contribution }) => `${Number(contribution || 0).toFixed(0)}`}
                       >
-                        {analysisBreakdown.map((_, i) => (
+                        {pieData.map((_, i) => (
                           <Cell key={i} fill={['#0284c7', '#0ea5e9', '#38bdf8', '#7dd3fc', '#bae6fd'][i]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(v) => [`${v.toFixed(1)} pts`, 'Contribution']} />
+                      <Tooltip
+                        formatter={(v) => [
+                          totalContribution > 0
+                            ? `${Number(v || 0).toFixed(1)} pts`
+                            : `${Number(v || 0).toFixed(0)}%`,
+                          totalContribution > 0 ? 'Contribution' : 'Weight',
+                        ]}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
