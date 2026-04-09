@@ -14,6 +14,7 @@ import {
   XMarkIcon,
   SparklesIcon,
   SpeakerWaveIcon,
+  ComputerDesktopIcon,
 } from '@heroicons/react/24/outline'
 import { speakQuestion, stopSpeaking, preloadVoices } from '../utils/questionTts.js'
 import { startVideoAnalysis } from '../utils/videoAnalyzer.js'
@@ -21,6 +22,7 @@ import BehavioralReport from '../components/BehavioralReport.jsx'
 import { getUser } from '../services/database.js'
 import { USERDB_FIELDS } from '../config/databaseSchema.js'
 import { QUOTA_MOCK_MAX } from '../utils/quotas.js'
+import { isMobileUserAgent } from '../utils/mobileBrowser.js'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
@@ -29,6 +31,7 @@ const isAcceptedFile = (f) =>
   ACCEPTED_TYPES.includes(f.type) || f.name?.toLowerCase().endsWith('.pdf') || f.name?.toLowerCase().endsWith('.docx')
 
 const MockInterview = () => {
+  const isMobileDevice = isMobileUserAgent()
   const [stage, setStage] = useState('intake') // 'intake' | 'questions' | 'interview' | 'analysis'
   const [file, setFile] = useState(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -371,6 +374,32 @@ const MockInterview = () => {
           <p className="text-lg font-semibold text-gray-900 mb-2">Mock interview limit reached</p>
           <p className="text-gray-600">
             You have used all {QUOTA_MOCK_MAX} mock interview reports included in your plan.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (isMobileDevice) {
+    return (
+      <div>
+        <Link
+          to="/dashboard"
+          className="inline-flex items-center text-gray-600 hover:text-primary-600 mb-6 transition font-medium"
+        >
+          <ArrowLeftIcon className="w-5 h-5 mr-2" />
+          Back to Dashboard
+        </Link>
+        <div className="bg-white rounded-2xl shadow-lg p-8 text-center max-w-2xl mx-auto border border-gray-200">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-100 text-primary-600">
+            <ComputerDesktopIcon className="h-9 w-9" aria-hidden />
+          </div>
+          <p className="text-xl font-bold text-gray-900 mb-3">Mock interview is desktop-only</p>
+          <p className="text-gray-600 leading-relaxed">
+            Everything is possible from mobile browsers, except taking the mock interview.
+          </p>
+          <p className="text-sm text-gray-500 mt-4">
+            Please open fortunehire.in on a desktop or laptop to continue with the mock interview.
           </p>
         </div>
       </div>

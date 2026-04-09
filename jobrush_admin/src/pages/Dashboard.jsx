@@ -6,6 +6,8 @@ import {
   ClipboardDocumentCheckIcon,
   SignalIcon,
   ServerStackIcon,
+  BanknotesIcon,
+  ExclamationTriangleIcon,
   CheckCircleIcon,
   XCircleIcon,
   ArrowPathIcon,
@@ -14,10 +16,17 @@ import {
   subscribeUserDashboardMetrics,
   subscribeInterviewReportCount,
   ONLINE_PRESENCE_WINDOW_MS,
+  listCouponStatuses,
 } from '../services/adminDb'
 import { fetchJobRushApiHealth } from '../services/apiHealth'
 
 const onlineMinutes = Math.round(ONLINE_PRESENCE_WINDOW_MS / 60_000)
+const moneyFormat = new Intl.NumberFormat('en-IN')
+
+function formatInr(amount) {
+  const n = Number(amount) || 0
+  return `Rs ${moneyFormat.format(Math.round(n))}`
+}
 
 function formatProcessUptime(seconds) {
   const t = Number(seconds) || 0
@@ -219,11 +228,18 @@ export default function Dashboard() {
     registered: null,
     paymentPendingReview: null,
     onlineNow: null,
+    legacyUnknown: null,
   })
   const [reportCount, setReportCount] = useState(null)
   const [loadingFirebase, setLoadingFirebase] = useState(true)
   const [apiHealth, setApiHealth] = useState(null)
   const [apiChecking, setApiChecking] = useState(false)
+  const [financeTotals, setFinanceTotals] = useState({
+    collected: null,
+    payout: null,
+    turnover: null,
+  })
+  const [loadingFinance, setLoadingFinance] = useState(true)
 
   const refreshApiHealth = useCallback(async () => {
     setApiChecking(true)
@@ -234,6 +250,32 @@ export default function Dashboard() {
       setApiHealth({ reachable: false, ok: false, status: 0, ms: 0, error: e?.message })
     } finally {
       setApiChecking(false)
+    }
+  }, [])
+
+  const refreshFinanceTotals = useCallback(async () => {
+    setLoadingFinance(true)
+    try {
+      const rows = await listCouponStatuses()
+      let collected = 0
+      let payout = 0
+      for (const row of rows) {
+        collected += Number(row?.totalAmountCollected) || 0
+        payout += Number(row?.totalContractPayout) || 0
+      }
+      setFinanceTotals({
+        collected,
+        payout,
+        turnover: collected - payout,
+      })
+    } catch {
+      setFinanceTotals({
+        collected: 0,
+        payout: 0,
+        turnover: 0,
+      })
+    } finally {
+      setLoadingFinance(false)
     }
   }, [])
 
@@ -259,6 +301,12 @@ export default function Dashboard() {
     return () => window.clearInterval(id)
   }, [refreshApiHealth])
 
+  useEffect(() => {
+    refreshFinanceTotals()
+    const id = window.setInterval(refreshFinanceTotals, 120_000)
+    return () => window.clearInterval(id)
+  }, [refreshFinanceTotals])
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
       <div className="space-y-1">
@@ -277,8 +325,16 @@ export default function Dashboard() {
             icon={UsersIcon}
             title="Registered users"
             value={userMetrics.registered}
-            hint="Total records in userdb"
+            hint="Real users only (has email + explicit access status)"
             loading={loadingFirebase && userMetrics.registered == null}
+          />
+          <StatCard
+            to="/users?filter=unknownLegacy"
+            icon={ExclamationTriangleIcon}
+            title="Unknown / legacy rows"
+            value={userMetrics.legacyUnknown}
+            hint="Rows missing email or access status; review/clean up in User management"
+            loading={loadingFirebase && userMetrics.legacyUnknown == null}
           />
           <StatCard
             to="/users?filter=awaitingVerification"
@@ -302,6 +358,18 @@ export default function Dashboard() {
             value={userMetrics.onlineNow}
             hint={`Approximate count: last activity within ${onlineMinutes} minutes (requires app heartbeat)`}
             loading={loadingFirebase && userMetrics.onlineNow == null}
+          />
+          <StatCard
+            icon={BanknotesIcon}
+            to="/coupons"
+            title="Coupon finance summary"
+            value={
+              financeTotals.turnover == null
+                ? '—'
+                : `Collected ${formatInr(financeTotals.collected)} | Payout ${formatInr(financeTotals.payout)} | Turnover ${formatInr(financeTotals.turnover)}`
+            }
+            hint="All coupon codes combined: turnover = money collected minus payouts"
+            loading={loadingFinance}
           />
         </div>
       </section>

@@ -41,7 +41,11 @@ function deriveStatus(row) {
   if (a === 'active') {
     return { key: 'active', label: 'Active', tone: 'text-emerald-200 bg-emerald-950/35 ring-emerald-800/40' }
   }
-  return { key: 'active', label: 'Active', tone: 'text-emerald-200 bg-emerald-950/35 ring-emerald-800/40' }
+  return {
+    key: 'unknown_legacy',
+    label: 'Unknown / legacy',
+    tone: 'text-amber-200 bg-amber-950/35 ring-amber-800/40',
+  }
 }
 
 export default function Users() {
@@ -52,9 +56,12 @@ export default function Users() {
   const [query, setQuery] = useState('')
   const [deleting, setDeleting] = useState(null)
   const [busyId, setBusyId] = useState(null)
-  const [statusFilter, setStatusFilter] = useState(() =>
-    searchParams.get('filter') === 'awaitingVerification' ? 'awaiting_verification' : 'all'
-  )
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const f = searchParams.get('filter')
+    if (f === 'awaitingVerification') return 'awaiting_verification'
+    if (f === 'unknownLegacy') return 'unknown_legacy'
+    return 'all'
+  })
   const [paymentModal, setPaymentModal] = useState({ open: false, row: null })
 
   const load = async () => {
@@ -208,6 +215,7 @@ export default function Users() {
             <option value="payment_pending">Payment pending</option>
             <option value="awaiting_verification">Awaiting verification</option>
             <option value="suspended">Suspended</option>
+            <option value="unknown_legacy">Unknown / legacy</option>
           </select>
         </label>
       </div>

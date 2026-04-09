@@ -18,7 +18,7 @@ const PLAN_AMOUNT_INR = 250
 export const ONLINE_PRESENCE_WINDOW_MS = 3 * 60 * 1000
 
 /**
- * @returns {{ registered: number, paymentPendingReview: number, onlineNow: number }}
+ * @returns {{ registered: number, paymentPendingReview: number, onlineNow: number, legacyUnknown: number }}
  */
 export function computeUserDashboardMetrics(val) {
   const entries = Object.entries(val || {}).filter(([k]) => k !== '_schema')
@@ -26,9 +26,17 @@ export function computeUserDashboardMetrics(val) {
   let registered = 0
   let paymentPendingReview = 0
   let onlineNow = 0
+  let legacyUnknown = 0
 
   for (const [, data] of entries) {
     if (!data || typeof data !== 'object') continue
+    const email = String(data[USERDB_FIELDS.EMAIL_ID] || '').trim()
+    const accessStatus = String(data[USERDB_FIELDS.ACCESS_STATUS] || '').trim()
+    const isRealUser = Boolean(email) && Boolean(accessStatus)
+    if (!isRealUser) {
+      legacyUnknown += 1
+      continue
+    }
     registered += 1
     if (data[USERDB_FIELDS.ACCESS_STATUS] === 'awaiting_activation') paymentPendingReview += 1
     const seen = data[USERDB_FIELDS.LAST_SEEN_AT]
@@ -38,7 +46,7 @@ export function computeUserDashboardMetrics(val) {
     }
   }
 
-  return { registered, paymentPendingReview, onlineNow }
+  return { registered, paymentPendingReview, onlineNow, legacyUnknown }
 }
 
 function computeReportCount(val) {
@@ -48,7 +56,7 @@ function computeReportCount(val) {
 
 /**
  * Live user metrics from userdb.
- * @param {(m: { registered: number, paymentPendingReview: number, onlineNow: number }) => void} onUpdate
+ * @param {(m: { registered: number, paymentPendingReview: number, onlineNow: number, legacyUnknown: number }) => void} onUpdate
  * @returns {() => void} unsubscribe
  */
 export function subscribeUserDashboardMetrics(onUpdate) {
