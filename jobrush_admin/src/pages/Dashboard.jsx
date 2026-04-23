@@ -94,17 +94,23 @@ function resendQuotaCells(r) {
   }
 }
 
-function StatCard({ to, icon: Icon, title, value, hint, loading }) {
+function StatCard({ to, icon: Icon, title, value, valueNode, hint, loading }) {
   const inner = (
     <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-admin-400 text-sm font-medium leading-snug">{title}</p>
-        <p className="text-2xl sm:text-3xl font-bold text-white mt-2 tabular-nums tracking-tight">
-          {loading ? '—' : value}
-        </p>
+        <div className="mt-2">
+          {loading ? (
+            <p className="text-2xl sm:text-3xl font-bold text-white tabular-nums tracking-tight">—</p>
+          ) : valueNode != null ? (
+            valueNode
+          ) : (
+            <p className="text-2xl sm:text-3xl font-bold text-white tabular-nums tracking-tight">{value}</p>
+          )}
+        </div>
         {hint && <p className="text-admin-500 text-xs mt-2 leading-relaxed">{hint}</p>}
       </div>
-      <div className="p-3 rounded-xl bg-admin-800/90 ring-1 ring-admin-700/50 shrink-0">
+      <div className="p-3 rounded-xl bg-admin-800/90 ring-1 ring-admin-700/50 shrink-0 self-start">
         <Icon className="w-7 h-7 sm:w-8 sm:h-8 text-admin-400" />
       </div>
     </div>
@@ -363,10 +369,29 @@ export default function Dashboard() {
             icon={BanknotesIcon}
             to="/coupons"
             title="Coupon finance summary"
-            value={
-              financeTotals.turnover == null
-                ? '—'
-                : `Collected ${formatInr(financeTotals.collected)} | Payout ${formatInr(financeTotals.payout)} | Turnover ${formatInr(financeTotals.turnover)}`
+            value="—"
+            valueNode={
+              loadingFinance || financeTotals.turnover == null ? null : (
+                <dl className="grid grid-cols-1 gap-2 w-full xl:grid-cols-3 xl:gap-3">
+                  {[
+                    { label: 'Collected', amount: financeTotals.collected },
+                    { label: 'Payout', amount: financeTotals.payout },
+                    { label: 'Turnover', amount: financeTotals.turnover },
+                  ].map(({ label, amount }) => (
+                    <div
+                      key={label}
+                      className="flex items-center justify-between gap-3 xl:flex-col xl:items-stretch xl:gap-1 rounded-xl bg-admin-950/55 border border-admin-800/90 px-3 py-2.5 sm:py-3 min-w-0"
+                    >
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-admin-500 shrink-0 xl:shrink">
+                        {label}
+                      </dt>
+                      <dd className="text-base sm:text-lg xl:text-xl font-bold text-white tabular-nums tracking-tight text-right xl:text-left min-w-0">
+                        {formatInr(amount)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )
             }
             hint="All coupon codes combined: turnover = money collected minus payouts"
             loading={loadingFinance}

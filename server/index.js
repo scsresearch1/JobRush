@@ -120,6 +120,8 @@ const MAIL_FROM_NEW_USER = 'JobRush Onboarding Team <newuser@fortunehire.in>'
 const MAIL_FROM_WELCOME = 'JobRush Access Team <welcome@fortunehire.in>'
 const MAIL_FROM_REPORTS = 'JobRush Reports Desk <reports@fortunehire.in>'
 const MAIL_REPLY_TO = 'info@fortunehire.in'
+/** Shown in payment-approval emails so users can return to the live app. */
+const JOB_RUSH_APP_URL = 'https://jbrush.netlify.app/'
 
 function requireAdminSecret(req, res, next) {
   if (!ADMIN_API_SECRET) {
@@ -785,11 +787,16 @@ app.post('/api/admin/notify-payment-decision', requireAdminSecret, async (req, r
       ? [
           `Hello,`,
           ``,
-          `Great news. Your JobRush payment has been verified and your access is now active.`,
+          `Great news—your JobRush payment is verified and your full access is now active.`,
           paymentReference ? `Payment reference: ${paymentReference}` : null,
           `Activation time: ${approvedAt}`,
           ``,
-          `You can now use your included ATS checks and mock interview sessions.`,
+          `You are ready to move forward with confidence: sharpen your resume for ATS, strengthen your story, and practice interviews that mirror the real process.`,
+          ``,
+          `Take the next step and launch JobRush here:`,
+          JOB_RUSH_APP_URL,
+          ``,
+          `We are glad to have you on board and look forward to seeing you succeed.`,
           ``,
           `Regards,`,
           `JobRush Access Team`,
@@ -814,12 +821,17 @@ app.post('/api/admin/notify-payment-decision', requireAdminSecret, async (req, r
       ? `
         <div style="font-family:Arial,sans-serif;line-height:1.55;color:#111827">
           <p>Hello,</p>
-          <p>Great news. Your <strong>JobRush</strong> payment has been verified and your access is now active.</p>
+          <p>Great news—your <strong>JobRush</strong> payment is verified and your <strong>full access is now active</strong>.</p>
           <p>
             ${paymentReference ? `<strong>Payment reference:</strong> ${esc(paymentReference)}<br/>` : ''}
             <strong>Activation time:</strong> ${esc(approvedAt)}
           </p>
-          <p>You can now use your included ATS checks and mock interview sessions.</p>
+          <p>You are ready to move forward with confidence: sharpen your resume for ATS, strengthen your story, and practice interviews that mirror the real process.</p>
+          <p style="margin:24px 0">
+            <a href="${esc(JOB_RUSH_APP_URL)}" style="display:inline-block;background:#111827;color:#ffffff;padding:14px 28px;text-decoration:none;border-radius:10px;font-weight:600">Get started on JobRush</a>
+          </p>
+          <p style="font-size:14px;color:#4b5563">Or open this link in your browser:<br/><a href="${esc(JOB_RUSH_APP_URL)}" style="color:#2563eb">${esc(JOB_RUSH_APP_URL)}</a></p>
+          <p>We are glad to have you on board and look forward to seeing you succeed.</p>
           <p>Regards,<br/>JobRush Access Team</p>
         </div>
       `

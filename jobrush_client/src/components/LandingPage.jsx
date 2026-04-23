@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { 
   BriefcaseIcon, 
@@ -11,7 +11,7 @@ import {
   Bars3Icon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import DemoModal from './DemoModal'
+import HeroDemoVideo from './HeroDemoVideo'
 import AnimatedCounter from './AnimatedCounter'
 import { useHelpCenter } from '../context/HelpCenterContext'
 import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
@@ -23,9 +23,14 @@ const SparklesIconSVG = () => (
   </svg>
 )
 
+const AUTO_MINIMIZE_MS = 10_000
+
 const LandingPage = ({ onStartJourney }) => {
   const { openChatbot } = useHelpCenter()
-  const [isDemoOpen, setIsDemoOpen] = useState(false)
+  const demoVideoRef = useRef(null)
+  const minimizeTimerRef = useRef(null)
+  const [demoLayout, setDemoLayout] = useState(/** @type {'hero' | 'pip'} */ ('hero'))
+  const [demoPinnedFull, setDemoPinnedFull] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const isLoggedIn =
     typeof window !== 'undefined' &&
@@ -55,6 +60,43 @@ const LandingPage = ({ onStartJourney }) => {
       if (timeoutId) clearTimeout(timeoutId)
     }
   }, [taglines.length])
+
+  const clearMinimizeTimer = useCallback(() => {
+    if (minimizeTimerRef.current != null) {
+      window.clearTimeout(minimizeTimerRef.current)
+      minimizeTimerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (demoPinnedFull) {
+      clearMinimizeTimer()
+      return
+    }
+    clearMinimizeTimer()
+    minimizeTimerRef.current = window.setTimeout(() => {
+      setDemoLayout('pip')
+      minimizeTimerRef.current = null
+    }, AUTO_MINIMIZE_MS)
+    return clearMinimizeTimer
+  }, [demoPinnedFull, clearMinimizeTimer])
+
+  useEffect(() => {
+    const v = demoVideoRef.current
+    if (!v) return
+    const p = v.play()
+    if (p && typeof p.catch === 'function') p.catch(() => {})
+  }, [demoLayout])
+
+  const openWatchDemo = useCallback(() => {
+    setDemoPinnedFull(true)
+    clearMinimizeTimer()
+    setDemoLayout('hero')
+    requestAnimationFrame(() => {
+      const v = demoVideoRef.current
+      if (v) v.play().catch(() => {})
+    })
+  }, [clearMinimizeTimer])
 
   const features = [
     {
@@ -173,8 +215,9 @@ const LandingPage = ({ onStartJourney }) => {
                 <span>Start Your Journey</span>
                 <ArrowRightIcon className="w-5 h-5" />
               </button>
-              <button 
-                onClick={() => setIsDemoOpen(true)}
+              <button
+                type="button"
+                onClick={openWatchDemo}
                 className="bg-white text-primary-600 px-8 py-4 rounded-xl text-lg font-semibold hover:bg-gray-50 transition shadow-lg border-2 border-primary-600 hover:scale-105 transform"
               >
                 Watch Demo
@@ -347,9 +390,7 @@ const LandingPage = ({ onStartJourney }) => {
         </div>
       </footer>
 
-      {/* Demo Modal */}
-      <DemoModal isOpen={isDemoOpen} onClose={() => setIsDemoOpen(false)} />
-
+      <HeroDemoVideo layout={demoLayout} videoRef={demoVideoRef} />
     </div>
   )
 }

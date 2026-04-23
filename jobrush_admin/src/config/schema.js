@@ -13,6 +13,8 @@ export const ADMIN_PORTAL_KEYS = {
   PAYMENT_QR: 'paymentQr',
   /** SMTP + From address for payment / user emails (API reads RTDB; URL default in server/index.js) */
   EMAIL_OUTBOUND: 'emailOutbound',
+  /** External contract partners: login on jadm, see only assigned coupon stats */
+  CONTRACT_ACCOUNTS: 'contractAccounts',
 }
 
 /** Stored at adminPortal/emailOutbound */
@@ -31,6 +33,17 @@ export const ADMIN_PORTAL_FIELDS = {
   PASSWORD: 'password',
   /** Data URL or https URL for UPI QR shown on the client payment modal */
   QR_IMAGE_URL: 'qrImageUrl',
+}
+
+/** One row per partner under adminPortal/contractAccounts/{pushId} */
+export const CONTRACT_ACCOUNT_FIELDS = {
+  USERNAME: 'username',
+  PASSWORD: 'password',
+  DISPLAY_NAME: 'displayName',
+  /** Coupon codes this partner may view (array or RTDB numeric-key object) */
+  COUPON_CODES: 'couponCodes',
+  CREATED_AT: 'createdAt',
+  UPDATED_AT: 'updatedAt',
 }
 
 export const USERDB_FIELDS = {

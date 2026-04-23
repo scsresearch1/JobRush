@@ -94,7 +94,7 @@ const COLLECTION_STRUCTURE = {
   },
   adminPortal: {
     description:
-      'JobRush admin portal (jadm): credentials, paymentQr. Lock down RTDB rules appropriately.',
+      'JobRush admin portal (jadm): credentials, paymentQr, emailOutbound, contractAccounts (partner logins). Lock down RTDB rules appropriately.',
     fields: ['username', 'password'],
     seedDocuments: [
       { id: 'credentials', data: { username: 'sd.niladri@gmail.com', password: 'JBRush@2026' } },

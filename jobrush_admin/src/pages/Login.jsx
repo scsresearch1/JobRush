@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { LockClosedIcon, ShieldCheckIcon, UserIcon } from '@heroicons/react/24/outline'
 import { isFirebaseWebConfigReady } from '../config/firebase'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
-  const { ready, authenticated, login } = useAuth()
+  const { ready, authenticated, role, login } = useAuth()
+  const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -20,7 +21,7 @@ export default function Login() {
   }
 
   if (authenticated) {
-    return <Navigate to="/" replace />
+    return <Navigate to={role === 'contract' ? '/contract' : '/'} replace />
   }
 
   const handleSubmit = async (e) => {
@@ -39,7 +40,9 @@ export default function Login() {
     setSubmitting(false)
     if (!result.ok) {
       setError(result.error || 'Login failed')
+      return
     }
+    navigate(result.role === 'contract' ? '/contract' : '/', { replace: true })
   }
 
   return (
@@ -50,7 +53,9 @@ export default function Login() {
             <ShieldCheckIcon className="w-9 h-9 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white">JobRush Admin</h1>
-          <p className="text-admin-300 text-sm mt-2">Sign in with admin username and password from Firebase</p>
+          <p className="text-admin-300 text-sm mt-2">
+            Admin or contract partner sign-in (credentials stored in Firebase)
+          </p>
         </div>
         {!isFirebaseWebConfigReady() && (
           <div className="mb-4 rounded-xl border border-amber-700/80 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
@@ -95,8 +100,9 @@ export default function Login() {
             Sign in
           </button>
         </form>
-        <p className="text-center text-xs text-admin-500 mt-6">
-          Credentials live in Firebase at <code className="text-admin-400">adminPortal/credentials</code>.
+        <p className="text-center text-xs text-admin-500 mt-6 leading-relaxed">
+          Admins: <code className="text-admin-400">adminPortal/credentials</code>. Partners:{' '}
+          <code className="text-admin-400">adminPortal/contractAccounts</code>.
         </p>
       </div>
     </div>

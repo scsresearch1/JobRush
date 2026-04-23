@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { isFirebaseWebConfigReady } from '../config/firebase'
-import { getAdminCredentials, saveAdminCredentials, saveAdminUsernameOnly } from '../services/adminDb'
+import {
+  getAdminCredentials,
+  saveAdminCredentials,
+  saveAdminUsernameOnly,
+  findContractAccountByCredentials,
+} from '../services/adminDb'
 
 const SESSION_KEY = 'jadm_admin_session'
 const SESSION_EXPIRY_MS = 8 * 60 * 60 * 1000 // 8 hours
@@ -30,25 +35,47 @@ export function messageForFirebaseError(err) {
 export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false)
   const [authenticated, setAuthenticated] = useState(false)
+  const [role, setRole] = useState(/** @type {'admin' | 'contract' | null} */ (null))
+  const [contractSession, setContractSession] = useState(
+    /** @type {{ accountId: string, displayLabel: string, assignedCouponCodes: string[] } | null} */ (null)
+  )
 
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(SESSION_KEY)
       if (!raw) {
         setAuthenticated(false)
+        setRole(null)
+        setContractSession(null)
         setReady(true)
         return
       }
-      const { exp } = JSON.parse(raw)
-      if (typeof exp === 'number' && Date.now() < exp) {
-        setAuthenticated(true)
-      } else {
+      const parsed = JSON.parse(raw)
+      if (typeof parsed.exp !== 'number' || Date.now() >= parsed.exp) {
         sessionStorage.removeItem(SESSION_KEY)
         setAuthenticated(false)
+        setRole(null)
+        setContractSession(null)
+        setReady(true)
+        return
+      }
+      setAuthenticated(true)
+      if (parsed.role === 'contract' && parsed.accountId && Array.isArray(parsed.assignedCouponCodes)) {
+        setRole('contract')
+        setContractSession({
+          accountId: parsed.accountId,
+          displayLabel: String(parsed.displayLabel || ''),
+          assignedCouponCodes: parsed.assignedCouponCodes,
+        })
+      } else {
+        setRole('admin')
+        setContractSession(null)
       }
     } catch {
       sessionStorage.removeItem(SESSION_KEY)
       setAuthenticated(false)
+      setRole(null)
+      setContractSession(null)
     }
     setReady(true)
   }, [])
@@ -61,20 +88,46 @@ export function AuthProvider({ children }) {
     }
     try {
       const creds = await getAdminCredentials()
+      if (creds && creds.username === u && creds.password === p) {
+        const exp = Date.now() + SESSION_EXPIRY_MS
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ exp, role: 'admin' }))
+        setAuthenticated(true)
+        setRole('admin')
+        setContractSession(null)
+        return { ok: true, role: 'admin' }
+      }
+
+      const partner = await findContractAccountByCredentials(u, p)
+      if (partner) {
+        const exp = Date.now() + SESSION_EXPIRY_MS
+        sessionStorage.setItem(
+          SESSION_KEY,
+          JSON.stringify({
+            exp,
+            role: 'contract',
+            accountId: partner.id,
+            displayLabel: partner.displayName || partner.username,
+            assignedCouponCodes: partner.couponCodes,
+          })
+        )
+        setAuthenticated(true)
+        setRole('contract')
+        setContractSession({
+          accountId: partner.id,
+          displayLabel: partner.displayName || partner.username,
+          assignedCouponCodes: partner.couponCodes,
+        })
+        return { ok: true, role: 'contract' }
+      }
+
       if (!creds) {
         return {
           ok: false,
           error:
-            'Admin credentials are missing in Firebase. From the project root run: npm run firebase:create-collections',
+            'Invalid username or password, or admin credentials are not seeded. If you are the owner, run npm run firebase:create-collections from the project root.',
         }
       }
-      if (creds.username !== u || creds.password !== p) {
-        return { ok: false, error: 'Invalid username or password.' }
-      }
-      const exp = Date.now() + SESSION_EXPIRY_MS
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ exp }))
-      setAuthenticated(true)
-      return { ok: true }
+      return { ok: false, error: 'Invalid username or password.' }
     } catch (e) {
       console.error('[jadm] login', e)
       return { ok: false, error: messageForFirebaseError(e) }
@@ -131,11 +184,22 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY)
     setAuthenticated(false)
+    setRole(null)
+    setContractSession(null)
   }, [])
 
   return (
     <AuthContext.Provider
-      value={{ ready, authenticated, login, logout, changePassword, changeAdminUsername }}
+      value={{
+        ready,
+        authenticated,
+        role,
+        contractSession,
+        login,
+        logout,
+        changePassword,
+        changeAdminUsername,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -32,6 +32,10 @@
       "emailOutbound": {
         ".read": true,
         ".write": true
+      },
+      "contractAccounts": {
+        ".read": true,
+        ".write": true
       }
     }
   }

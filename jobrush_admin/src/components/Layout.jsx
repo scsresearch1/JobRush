@@ -16,6 +16,7 @@ import {
   EnvelopeIcon,
   TicketIcon,
   ClipboardDocumentListIcon,
+  BuildingOffice2Icon,
 } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 
@@ -69,6 +70,10 @@ export default function Layout() {
           <NavLink to="/reports" className={navClass} onClick={() => setMobileOpen(false)}>
             <DocumentTextIcon className="w-5 h-5 shrink-0" />
             Report management
+          </NavLink>
+          <NavLink to="/contracts" className={navClass} onClick={() => setMobileOpen(false)}>
+            <BuildingOffice2Icon className="w-5 h-5 shrink-0" />
+            Contract management
           </NavLink>
 
           <div className="pt-1">

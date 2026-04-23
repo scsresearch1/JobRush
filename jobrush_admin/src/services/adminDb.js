@@ -1,9 +1,10 @@
-import { ref, get, set, update, remove, onValue } from 'firebase/database'
+import { ref, get, set, update, remove, onValue, push } from 'firebase/database'
 import { database } from '../config/firebase'
 import {
   COLLECTIONS,
   ADMIN_PORTAL_KEYS,
   ADMIN_PORTAL_FIELDS,
+  CONTRACT_ACCOUNT_FIELDS,
   USERDB_FIELDS,
   INTERVIEW_REPORTS_FIELDS,
   ATS_REPORT_FIELDS,
@@ -130,6 +131,154 @@ function assertValidCouponCode(code) {
 
 export function adminCredentialsRef() {
   return ref(database, `${COLLECTIONS.ADMIN_PORTAL}/${ADMIN_PORTAL_KEYS.CREDENTIALS}`)
+}
+
+export function contractAccountsRef() {
+  return ref(database, `${COLLECTIONS.ADMIN_PORTAL}/${ADMIN_PORTAL_KEYS.CONTRACT_ACCOUNTS}`)
+}
+
+function contractAccountRef(accountId) {
+  return ref(database, `${COLLECTIONS.ADMIN_PORTAL}/${ADMIN_PORTAL_KEYS.CONTRACT_ACCOUNTS}/${accountId}`)
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {string[]}
+ */
+export function normalizeContractCouponCodes(raw) {
+  if (!raw) return []
+  if (Array.isArray(raw)) {
+    return raw.map((c) => normalizeCouponCode(c)).filter(Boolean)
+  }
+  if (typeof raw === 'object') {
+    return Object.values(raw)
+      .map((c) => normalizeCouponCode(c))
+      .filter(Boolean)
+  }
+  return []
+}
+
+function assertValidContractUsername(u) {
+  const s = String(u || '').trim()
+  if (s.length < 2) throw new Error('Username must be at least 2 characters.')
+  if (s.length > 64) throw new Error('Username cannot exceed 64 characters.')
+  if (!/^[a-zA-Z0-9@._-]+$/.test(s)) {
+    throw new Error('Username may only contain letters, numbers, and @ . _ -')
+  }
+}
+
+/**
+ * @returns {Promise<Array<{ id: string, username: string, displayName: string, couponCodes: string[], createdAt?: string, updatedAt?: string }>>}
+ */
+export async function listContractAccounts() {
+  const snapshot = await get(contractAccountsRef())
+  if (!snapshot.exists()) return []
+  const val = snapshot.val()
+  return Object.entries(val)
+    .filter(([k]) => k !== '_schema')
+    .map(([id, data]) => ({
+      id,
+      username: String(data?.[CONTRACT_ACCOUNT_FIELDS.USERNAME] || ''),
+      displayName: String(data?.[CONTRACT_ACCOUNT_FIELDS.DISPLAY_NAME] || data?.[CONTRACT_ACCOUNT_FIELDS.USERNAME] || ''),
+      couponCodes: normalizeContractCouponCodes(data?.[CONTRACT_ACCOUNT_FIELDS.COUPON_CODES]),
+      createdAt: data?.[CONTRACT_ACCOUNT_FIELDS.CREATED_AT],
+      updatedAt: data?.[CONTRACT_ACCOUNT_FIELDS.UPDATED_AT],
+    }))
+    .filter((r) => r.username)
+    .sort((a, b) => a.username.localeCompare(b.username))
+}
+
+/**
+ * @returns {Promise<{ id: string, username: string, displayName: string, couponCodes: string[] } | null>}
+ */
+export async function findContractAccountByCredentials(username, password) {
+  const u = String(username || '').trim()
+  const p = String(password || '')
+  if (!u || !p) return null
+  const rows = await listContractAccounts()
+  const lower = u.toLowerCase()
+  const row = rows.find((r) => r.username.toLowerCase() === lower)
+  if (!row) return null
+  const snap = await get(contractAccountRef(row.id))
+  if (!snap.exists()) return null
+  const stored = snap.val()?.[CONTRACT_ACCOUNT_FIELDS.PASSWORD]
+  if (typeof stored !== 'string' || stored !== p) return null
+  return { id: row.id, username: row.username, displayName: row.displayName, couponCodes: row.couponCodes }
+}
+
+/**
+ * @param {{ username: string, password: string, displayName?: string, couponCodes: string[] }} params
+ */
+export async function createContractAccount({ username, password, displayName, couponCodes }) {
+  assertValidContractUsername(username)
+  const p = String(password || '')
+  if (p.length < 8) throw new Error('Password must be at least 8 characters.')
+  const codes = normalizeContractCouponCodes(couponCodes)
+  if (codes.length === 0) throw new Error('Assign at least one coupon.')
+  const u = String(username).trim()
+  const existing = await listContractAccounts()
+  if (existing.some((a) => a.username.toLowerCase() === u.toLowerCase())) {
+    throw new Error('A contract account with this username already exists.')
+  }
+  const allCoupons = await listCoupons()
+  const valid = new Set(allCoupons.map((c) => normalizeCouponCode(c[COUPON_FIELDS.COUPON_CODE])))
+  for (const c of codes) {
+    if (!valid.has(c)) {
+      throw new Error(`Coupon ${c} is not defined. Create it under Coupon management first.`)
+    }
+  }
+  const now = new Date().toISOString()
+  const label = String(displayName || '').trim() || u
+  const newRef = push(contractAccountsRef())
+  await set(newRef, {
+    [CONTRACT_ACCOUNT_FIELDS.USERNAME]: u,
+    [CONTRACT_ACCOUNT_FIELDS.PASSWORD]: p,
+    [CONTRACT_ACCOUNT_FIELDS.DISPLAY_NAME]: label,
+    [CONTRACT_ACCOUNT_FIELDS.COUPON_CODES]: codes,
+    [CONTRACT_ACCOUNT_FIELDS.CREATED_AT]: now,
+    [CONTRACT_ACCOUNT_FIELDS.UPDATED_AT]: now,
+  })
+}
+
+/**
+ * @param {string} accountId
+ * @param {{ password?: string, displayName?: string, couponCodes?: string[] }} patch
+ */
+export async function updateContractAccount(accountId, patch) {
+  const id = String(accountId || '').trim()
+  if (!id) throw new Error('Account id is required.')
+  const snap = await get(contractAccountRef(id))
+  if (!snap.exists()) throw new Error('Contract account not found.')
+  const next = {}
+  if (patch.password != null) {
+    const p = String(patch.password)
+    if (p.length < 8) throw new Error('Password must be at least 8 characters.')
+    next[CONTRACT_ACCOUNT_FIELDS.PASSWORD] = p
+  }
+  if (patch.displayName != null) {
+    next[CONTRACT_ACCOUNT_FIELDS.DISPLAY_NAME] = String(patch.displayName).trim() || snap.val()[CONTRACT_ACCOUNT_FIELDS.USERNAME]
+  }
+  if (patch.couponCodes != null) {
+    const codes = normalizeContractCouponCodes(patch.couponCodes)
+    if (codes.length === 0) throw new Error('Assign at least one coupon.')
+    const allCoupons = await listCoupons()
+    const valid = new Set(allCoupons.map((c) => normalizeCouponCode(c[COUPON_FIELDS.COUPON_CODE])))
+    for (const c of codes) {
+      if (!valid.has(c)) {
+        throw new Error(`Coupon ${c} is not defined. Create it under Coupon management first.`)
+      }
+    }
+    next[CONTRACT_ACCOUNT_FIELDS.COUPON_CODES] = codes
+  }
+  if (Object.keys(next).length === 0) return
+  next[CONTRACT_ACCOUNT_FIELDS.UPDATED_AT] = new Date().toISOString()
+  await update(contractAccountRef(id), next)
+}
+
+export async function deleteContractAccount(accountId) {
+  const id = String(accountId || '').trim()
+  if (!id) throw new Error('Account id is required.')
+  await remove(contractAccountRef(id))
 }
 
 export function paymentQrRef() {
