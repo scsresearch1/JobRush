@@ -30,6 +30,3 @@ firebase-adminsdk-*.json
 *.sln
 *.sw?
 
-# Large demo video (exceeds GitHub 100MB limit); add to Netlify/hosting manually or use a CDN URL.
-jobrush_client/public/JobRush.mp4
-
