@@ -11,7 +11,7 @@ import {
   Bars3Icon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import HeroDemoVideo, { applyAudiblePlayback } from './HeroDemoVideo'
+import HeroDemoVideo, { prepareMutedAutoplay } from './HeroDemoVideo'
 import AnimatedCounter from './AnimatedCounter'
 import { useHelpCenter } from '../context/HelpCenterContext'
 import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
@@ -84,7 +84,7 @@ const LandingPage = ({ onStartJourney }) => {
   useEffect(() => {
     const v = demoVideoRef.current
     if (!v) return
-    applyAudiblePlayback(v)
+    prepareMutedAutoplay(v)
     const p = v.play()
     if (p && typeof p.catch === 'function') p.catch(() => {})
   }, [demoLayout])
@@ -96,7 +96,7 @@ const LandingPage = ({ onStartJourney }) => {
     requestAnimationFrame(() => {
       const v = demoVideoRef.current
       if (v) {
-        applyAudiblePlayback(v)
+        prepareMutedAutoplay(v)
         v.play().catch(() => {})
       }
     })
