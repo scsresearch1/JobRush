@@ -1,13 +1,25 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 
 const base = import.meta.env.BASE_URL || '/'
 const videoSrc = `${base.endsWith('/') ? base : `${base}/`}JobRush.mp4`
+
+/** Ensure native controls show unmuted state; call before programmatic play(). */
+export function applyAudiblePlayback(video) {
+  if (!video) return
+  video.muted = false
+  video.defaultMuted = false
+  video.volume = 1
+}
 
 /**
  * @param {{ layout: 'hero' | 'pip', videoRef: React.RefObject<HTMLVideoElement | null> }} props
  */
 export default function HeroDemoVideo({ layout, videoRef }) {
   const isPip = layout === 'pip'
+
+  useEffect(() => {
+    applyAudiblePlayback(videoRef.current)
+  }, [videoRef, layout])
 
   return (
     <div
@@ -24,7 +36,6 @@ export default function HeroDemoVideo({ layout, videoRef }) {
           ref={videoRef}
           src={videoSrc}
           className={`w-full bg-black ${isPip ? 'aspect-video object-cover' : 'max-h-[min(85vh,56rem)] rounded-2xl object-contain shadow-2xl ring-1 ring-white/20'}`}
-          muted
           playsInline
           autoPlay
           controls
