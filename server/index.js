@@ -143,6 +143,22 @@ function esc(s) {
     .replace(/'/g, '&#39;')
 }
 
+/** User-facing activation line in emails (avoids raw ISO strings in Gmail). */
+function formatActivationForEmail(iso) {
+  const s = String(iso || '').trim()
+  const t = Date.parse(s)
+  if (Number.isNaN(t)) return s || '—'
+  try {
+    return new Intl.DateTimeFormat('en-IN', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+      timeZone: 'Asia/Kolkata',
+    }).format(new Date(t))
+  } catch {
+    return s
+  }
+}
+
 async function sendResendMail({ from, to, subject, html, text, replyTo }) {
   if (!resend) throw new Error('Email service not configured. Add RESEND_API_KEY.')
   const payload = {
@@ -780,6 +796,7 @@ app.post('/api/admin/notify-payment-decision', requireAdminSecret, async (req, r
     }
 
     const isApproved = decision === 'approved'
+    const activationDisplay = formatActivationForEmail(approvedAt)
     const subject = isApproved
       ? 'Your JobRush access is now active'
       : 'Action required: JobRush payment verification'
@@ -789,7 +806,7 @@ app.post('/api/admin/notify-payment-decision', requireAdminSecret, async (req, r
           ``,
           `Great news—your JobRush payment is verified and your full access is now active.`,
           paymentReference ? `Payment reference: ${paymentReference}` : null,
-          `Activation time: ${approvedAt}`,
+          `Activation time: ${activationDisplay} (IST)`,
           ``,
           `You are ready to move forward with confidence: sharpen your resume for ATS, strengthen your story, and practice interviews that mirror the real process.`,
           ``,
@@ -824,7 +841,7 @@ app.post('/api/admin/notify-payment-decision', requireAdminSecret, async (req, r
           <p>Great news—your <strong>JobRush</strong> payment is verified and your <strong>full access is now active</strong>.</p>
           <p>
             ${paymentReference ? `<strong>Payment reference:</strong> ${esc(paymentReference)}<br/>` : ''}
-            <strong>Activation time:</strong> ${esc(approvedAt)}
+            <strong>Activation time:</strong> ${esc(activationDisplay)} <span style="color:#6b7280;font-weight:400">(IST)</span>
           </p>
           <p>You are ready to move forward with confidence: sharpen your resume for ATS, strengthen your story, and practice interviews that mirror the real process.</p>
           <p style="margin:24px 0">
