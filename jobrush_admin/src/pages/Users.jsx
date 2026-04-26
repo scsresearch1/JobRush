@@ -6,12 +6,13 @@ import {
   ArrowPathIcon,
   CheckBadgeIcon,
   NoSymbolIcon,
+  EnvelopeIcon,
 } from '@heroicons/react/24/outline'
 import { listUsers, deleteUser, updateUserRecord, recordCouponRedemptionFromApproval } from '../services/adminDb'
 import { USERDB_FIELDS } from '../config/schema'
 import { formatTimestampIST } from '../utils/formatIst'
 import PaymentReviewModal from '../components/PaymentReviewModal'
-import { sendPaymentDecisionEmail } from '../services/adminApiMail'
+import { sendPaymentDecisionEmail, sendPaymentPendingReminderEmail } from '../services/adminApiMail'
 
 const QUOTA_ATS = 5
 const QUOTA_MOCK = 5
@@ -63,6 +64,7 @@ export default function Users() {
     return 'all'
   })
   const [paymentModal, setPaymentModal] = useState({ open: false, row: null })
+  const [reminderMsg, setReminderMsg] = useState({ type: '', text: '' })
 
   const load = async () => {
     setError(null)
@@ -221,6 +223,17 @@ export default function Users() {
       </div>
 
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+      {reminderMsg.text && (
+        <p
+          className={`text-sm rounded-xl px-4 py-3 border mb-4 ${
+            reminderMsg.type === 'ok'
+              ? 'text-emerald-200 border-emerald-800/80 bg-emerald-950/40'
+              : 'text-red-300 border-red-900/60 bg-red-950/30'
+          }`}
+        >
+          {reminderMsg.text}
+        </p>
+      )}
 
       <div className="rounded-xl border border-admin-700 overflow-hidden bg-admin-900/50">
         <div className="overflow-x-auto -mx-px">
@@ -257,6 +270,7 @@ export default function Users() {
                   const ats = Math.min(QUOTA_ATS, Number(r[USERDB_FIELDS.ATS_CHECKS_USED]) || 0)
                   const mock = Math.min(QUOTA_MOCK, Number(r[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0)
                   const canReviewPayment = r[USERDB_FIELDS.ACCESS_STATUS] === 'awaiting_activation'
+                  const canSendPaymentReminder = st.key === 'payment_pending' && email.includes('@')
                   const isBusy = busyId === uid
 
                   return (
@@ -281,6 +295,34 @@ export default function Users() {
                       </td>
                       <td className="py-3 px-3">
                         <div className="flex flex-col sm:flex-row sm:justify-end gap-2 items-stretch sm:items-center">
+                          {canSendPaymentReminder && (
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={async () => {
+                                setReminderMsg({ type: '', text: '' })
+                                setBusyId(uid)
+                                try {
+                                  await sendPaymentPendingReminderEmail({ email })
+                                  setReminderMsg({
+                                    type: 'ok',
+                                    text: `Payment reminder sent to ${email}.`,
+                                  })
+                                } catch (e) {
+                                  setReminderMsg({
+                                    type: 'err',
+                                    text: e?.message || 'Could not send reminder email.',
+                                  })
+                                } finally {
+                                  setBusyId(null)
+                                }
+                              }}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-sky-900/50 text-sky-100 text-xs font-medium ring-1 ring-sky-800/60 hover:bg-sky-900/70 disabled:opacity-50 whitespace-nowrap"
+                            >
+                              <EnvelopeIcon className="w-4 h-4 shrink-0" />
+                              Payment reminder
+                            </button>
+                          )}
                           {canReviewPayment && (
                             <button
                               type="button"

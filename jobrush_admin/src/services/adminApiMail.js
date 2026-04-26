@@ -35,6 +35,11 @@ export function sendPaymentDecisionEmail({ email, decision, paymentReference }) 
   })
 }
 
+/** Reminder for users in pending_payment — complete payment and submit valid transaction ID. */
+export function sendPaymentPendingReminderEmail({ email }) {
+  return postAdmin('/api/admin/notify-payment-pending', { email })
+}
+
 export function sendAdminUserEmail({ to, subject, message }) {
   return postAdmin('/api/admin/send-user-email', { to, subject, message })
 }

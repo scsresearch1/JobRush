@@ -879,6 +879,75 @@ app.post('/api/admin/notify-payment-decision', requireAdminSecret, async (req, r
 })
 
 /**
+ * POST /api/admin/notify-payment-pending
+ * Body: { email } — users who registered but have not completed payment (pending_payment).
+ */
+app.post('/api/admin/notify-payment-pending', requireAdminSecret, async (req, res) => {
+  try {
+    const email = cleanEmail(req.body?.email)
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid recipient email is required.' })
+    }
+
+    const subject = 'Complete your JobRush registration — payment details needed'
+    const text = [
+      `Hello,`,
+      ``,
+      `Thank you for starting your JobRush registration. Your account is on file, but we have not yet received a completed payment with a verifiable transaction reference.`,
+      ``,
+      `You are only a few clicks away from unlocking your full toolkit: ATS-aligned resume scoring, targeted improvements, and AI-powered mock interviews — structured to help you present your strongest candidacy for roles that matter to you.`,
+      ``,
+      `To continue:`,
+      `1. Open JobRush using the link below.`,
+      `2. Sign in with the same email you used to register.`,
+      `3. Complete payment and enter your valid payment or UPI transaction ID exactly as shown in your bank or UPI app. Accurate references allow us to verify and activate your access promptly.`,
+      ``,
+      `Return to JobRush:`,
+      JOB_RUSH_APP_URL,
+      ``,
+      `If you believe you have already paid, please try again with the correct transaction ID, or reply to this email with proof of payment and we will assist you.`,
+      ``,
+      `Regards,`,
+      `JobRush Onboarding Team`,
+    ].join('\n')
+
+    const html = `
+      <div style="font-family:Arial,sans-serif;line-height:1.55;color:#111827">
+        <p>Hello,</p>
+        <p>Thank you for starting your <strong>JobRush</strong> registration. Your account is on file, but we have not yet received a completed payment with a verifiable transaction reference.</p>
+        <p>You are only a few clicks away from unlocking your full toolkit: ATS-aligned resume scoring, targeted improvements, and AI-powered mock interviews — structured to help you present your strongest candidacy for roles that matter to you.</p>
+        <p><strong>To continue:</strong></p>
+        <ol style="margin:0 0 1em 1.25em;padding:0">
+          <li style="margin-bottom:0.35em">Open JobRush using the button or link below.</li>
+          <li style="margin-bottom:0.35em">Sign in with the <strong>same email</strong> you used to register.</li>
+          <li style="margin-bottom:0.35em">Complete payment and enter your <strong>valid payment or UPI transaction ID</strong> exactly as shown in your bank or UPI app. Accurate references allow us to verify and activate your access promptly.</li>
+        </ol>
+        <p style="margin:24px 0">
+          <a href="${esc(JOB_RUSH_APP_URL)}" style="display:inline-block;background:#0369a1;color:#ffffff;padding:14px 28px;text-decoration:none;border-radius:10px;font-weight:600">Continue to JobRush</a>
+        </p>
+        <p style="font-size:14px;color:#4b5563">Or copy this URL:<br/><a href="${esc(JOB_RUSH_APP_URL)}" style="color:#2563eb">${esc(JOB_RUSH_APP_URL)}</a></p>
+        <p>If you believe you have already paid, please try again with the correct transaction ID, or reply to this email with proof of payment and we will assist you.</p>
+        <p>Regards,<br/>JobRush Onboarding Team</p>
+      </div>
+    `
+
+    const messageId = await sendResendMail({
+      from: MAIL_FROM_NEW_USER,
+      to: email,
+      subject,
+      html,
+      text,
+      replyTo: MAIL_REPLY_TO,
+    })
+    console.log('[email] notify-payment-pending', { to: email, subject, messageId })
+    res.json({ ok: true, messageId })
+  } catch (err) {
+    console.error('notify-payment-pending error:', err)
+    res.status(500).json({ error: err.message || 'Failed to send payment pending email.' })
+  }
+})
+
+/**
  * POST /api/admin/send-user-email
  * Body: { to, subject, message }
  */
