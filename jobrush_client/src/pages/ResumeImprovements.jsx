@@ -7,6 +7,7 @@ import {
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline'
 import DownloadResumeModal from '../components/DownloadResumeModal.jsx'
+import AcceptabilityPreview from '../components/AcceptabilityPreview.jsx'
 import { getRecommendations, pingHealth } from '../services/groqService.js'
 import { evaluateResume } from '../ats/index.js'
 import { getDisplayLines } from '../utils/cleanAiText.js'
@@ -25,11 +26,12 @@ const ResumeImprovements = () => {
   const [resume, setResume] = useState(null)
   const [showDownloadModal, setShowDownloadModal] = useState(false)
   const [recommendations, setRecommendations] = useState(FALLBACK_RECOMMENDATIONS)
+  const [evaluation, setEvaluation] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [cooldownUntil, setCooldownUntil] = useState(0)
   const [nowTs, setNowTs] = useState(Date.now())
-  const [iterationIndex, setIterationIndex] = useState(0)
+  const [impactFilter, setImpactFilter] = useState('all')
 
   useEffect(() => {
     const timer = setInterval(() => setNowTs(Date.now()), 1000)
@@ -39,14 +41,11 @@ const ResumeImprovements = () => {
   const cooldownRemainingMs = Math.max(0, cooldownUntil - nowTs)
   const cooldownRemainingSec = Math.ceil(cooldownRemainingMs / 1000)
   const isCooldownActive = cooldownRemainingMs > 0
-  const groupedRecommendations = React.useMemo(() => {
-    const out = []
-    for (let i = 0; i < recommendations.length; i += 3) out.push(recommendations.slice(i, i + 3))
-    return out
-  }, [recommendations])
-  const totalIterations = groupedRecommendations.length || 1
-  const activeIteration = Math.min(iterationIndex, totalIterations - 1)
-  const visibleRecommendations = groupedRecommendations[activeIteration] || []
+  const filteredRecommendations = React.useMemo(
+    () => recommendations.filter((rec) => impactFilter === 'all' || rec.impact === 'High'),
+    [recommendations, impactFilter]
+  )
+  const highImpactCount = recommendations.filter((rec) => rec.impact === 'High').length
 
   const fetchRecommendations = React.useCallback(async () => {
     const now = Date.now()
@@ -59,6 +58,7 @@ const ResumeImprovements = () => {
     setError(null)
     setCooldownUntil(now + RECOMMENDATION_COOLDOWN_MS)
     const evaluation = evaluateResume(parsed)
+    setEvaluation(evaluation)
     try {
       console.log('[ResumeImprovements] Fetching recommendations')
       const reachable = await pingHealth(9, 10000)
@@ -72,7 +72,6 @@ const ResumeImprovements = () => {
       const { recommendations: recs } = await getRecommendations(parsed, evaluation)
       if (recs?.length > 0) {
         setRecommendations(recs)
-        setIterationIndex(0)
       }
       setError(null)
       console.log('[ResumeImprovements] Success', { count: recs?.length })
@@ -166,55 +165,74 @@ const ResumeImprovements = () => {
             <span>Please wait {cooldownRemainingSec}s before refreshing recommendations.</span>
           </div>
         )}
-        <div className="space-y-6">
-          {recommendations.length > 0 && (
-            <div className="mb-2 flex flex-col gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-gray-700">
-                <span className="font-semibold">Iteration {activeIteration + 1}</span> of {totalIterations}
-                {' '}({visibleRecommendations.length} recommendations)
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIterationIndex((v) => Math.max(0, v - 1))}
-                  disabled={activeIteration === 0}
-                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIterationIndex((v) => Math.min(totalIterations - 1, v + 1))}
-                  disabled={activeIteration >= totalIterations - 1}
-                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Next
-                </button>
-              </div>
+        <div className="sticky top-2 z-10 mb-4 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-gray-700">
+              <span className="font-semibold">{filteredRecommendations.length}</span> visible recommendations
+              <span className="text-gray-500"> ({highImpactCount} high impact)</span>
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setImpactFilter('all')}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                  impactFilter === 'all'
+                    ? 'bg-primary-600 text-white'
+                    : 'border border-gray-300 bg-white text-gray-700'
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setImpactFilter('high')}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                  impactFilter === 'high'
+                    ? 'bg-primary-600 text-white'
+                    : 'border border-gray-300 bg-white text-gray-700'
+                }`}
+              >
+                High impact
+              </button>
+              <button
+                type="button"
+                onClick={fetchRecommendations}
+                disabled={isCooldownActive || loading}
+                className="rounded-md border border-primary-300 bg-primary-50 px-3 py-1.5 text-sm font-medium text-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isCooldownActive ? `Refresh in ${cooldownRemainingSec}s` : 'Refresh'}
+              </button>
             </div>
-          )}
-          {visibleRecommendations.map((rec, index) => (
+          </div>
+        </div>
+        <AcceptabilityPreview evaluation={evaluation} recommendations={recommendations} />
+        <div className="space-y-6">
+          {filteredRecommendations.map((rec, index) => (
             <div
-              key={`${activeIteration}-${index}-${rec.section}`}
-              className="p-4 sm:p-6 rounded-xl border-2 border-gray-200 bg-gray-50"
+              key={`${index}-${rec.section}`}
+              className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md sm:p-6"
             >
               <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-bold text-gray-900">{rec.section}</h3>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    rec.impact === 'High' ? 'bg-amber-100 text-amber-800' : 'bg-gray-200 text-gray-700'
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-gray-100 px-2 text-xs font-semibold text-gray-700">
+                    {index + 1}
+                  </span>
+                  <h3 className="text-lg font-semibold text-gray-900">{rec.section}</h3>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    rec.impact === 'High' ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'
                   }`}>
                     {rec.impact} impact
                   </span>
                 </div>
-                <p className="text-sm text-gray-600 mb-1">
+                <p className="mb-1 text-sm text-gray-600">
                   <span className="font-medium">Current:</span> {rec.current}
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <span className="font-medium">Where to apply:</span> {rec.where || rec.section}
+                <p className="mb-3 text-sm text-gray-700">
+                  <span className="font-medium">Apply in:</span> {rec.where || rec.section}
                 </p>
-                <p className="text-sm text-primary-700">
-                  <span className="font-medium">Suggestion:</span>{' '}
+                <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3">
+                  <p className="text-sm font-medium text-primary-900">Suggested improvement</p>
+                  <p className="mt-1 text-sm text-primary-800">
                   {typeof rec.suggestion === 'string' ? (
                     (() => {
                       const lines = getDisplayLines(rec.suggestion)
@@ -234,18 +252,12 @@ const ResumeImprovements = () => {
                   ) : (
                     rec.suggestion ?? '—'
                   )}
-                </p>
-                {Array.isArray(rec.steps) && rec.steps.length > 0 && (
-                  <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
-                    <p className="text-sm font-medium text-gray-900">Step-by-step</p>
-                    <div className="mt-2 space-y-1">
-                      {rec.steps.map((step, i) => (
-                        <p key={i} className="text-sm text-gray-700">
-                          {i + 1}. {step}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
+                  </p>
+                </div>
+                {rec.example && (
+                  <p className="mt-3 text-sm text-gray-700">
+                    <span className="font-medium">Example rewrite:</span> {rec.example}
+                  </p>
                 )}
               </div>
             </div>

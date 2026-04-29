@@ -381,6 +381,14 @@ function collectWeakDimensions(scores) {
   return out.slice(0, 4)
 }
 
+function collectLowScoreEntities(scores, limit = 5) {
+  return [...(scores || [])]
+    .filter((s) => s && typeof s === 'object' && s.entity)
+    .sort((a, b) => Number(a?.score || 0) - Number(b?.score || 0))
+    .slice(0, limit)
+    .map((s) => `${s.entity} (${s.score}%)`)
+}
+
 function buildDeterministicFallbackRecommendations(resume, evaluation) {
   const scores = evaluation?.scores?.all || []
   const missingSkills = collectMissingSkills(scores)
@@ -399,11 +407,7 @@ function buildDeterministicFallbackRecommendations(resume, evaluation) {
       current: 'Skills list may miss ATS-priority keywords.',
       suggestion: `${topSkillLine} Group skills by category (Languages, Frameworks, Tools) so ATS can parse them faster.`,
       where: 'Skills section',
-      steps: [
-        'Pick the top 5 missing skills that genuinely match your experience.',
-        'Add them under category headers (Languages, Frameworks, Tools).',
-        'Remove duplicates and keep the section concise and scannable.',
-      ],
+      example: 'Languages: Java, Python, SQL | Frameworks: React, Node.js | Tools: Git, Docker, AWS',
       impact: 'High',
     },
     {
@@ -412,11 +416,7 @@ function buildDeterministicFallbackRecommendations(resume, evaluation) {
       suggestion:
         'Rewrite top 4 bullets using Action + Scope + Result. Include one measurable result per role (%, time saved, revenue, users, latency, defects).',
       where: `Experience > ${firstRole}`,
-      steps: [
-        'Rewrite first two bullets starting with strong action verbs.',
-        'Add one concrete metric to each rewritten bullet.',
-        'Keep each bullet under two lines for ATS readability.',
-      ],
+      example: 'Built an automated reporting pipeline in Python that reduced weekly manual effort by 35% for the operations team.',
       impact: 'High',
     },
     {
@@ -425,11 +425,7 @@ function buildDeterministicFallbackRecommendations(resume, evaluation) {
       suggestion:
         'For each core project, add stack + problem + your contribution + measurable outcome in 2-3 bullets. Mirror job keywords naturally in those bullets.',
       where: `Projects > ${firstProject}`,
-      steps: [
-        'Update the first project with tech stack and project objective.',
-        'Add your exact contribution in one clear bullet.',
-        'Add measurable outcome (users, %, latency, time saved, etc.).',
-      ],
+      example: 'Personal Project: Developed a fraud-detection model (Python, XGBoost) that improved precision from 0.71 to 0.87 on test data.',
       impact: 'High',
     },
     {
@@ -437,11 +433,7 @@ function buildDeterministicFallbackRecommendations(resume, evaluation) {
       current: 'No focused profile summary for the target role.',
       suggestion: `Add a 2-3 line summary tailored to ${roleHints.join(', ') || 'your target role'} with strongest tools, domain focus, and proof of impact.`,
       where: 'Resume header > Professional Summary',
-      steps: [
-        'Open with target role and years/domain focus.',
-        'Mention strongest tools or technologies.',
-        'Close with one impact statement tied to outcomes.',
-      ],
+      example: 'Software Engineer focused on backend systems with Python, SQL, and AWS; delivered automation workflows that cut reporting time by 35%.',
       impact: 'Medium',
     },
     {
@@ -450,11 +442,7 @@ function buildDeterministicFallbackRecommendations(resume, evaluation) {
       suggestion:
         'Use standard headings, simple chronology, consistent date format, and avoid dense graphics/tables. Keep section titles explicit (Experience, Projects, Skills, Education).',
       where: 'Overall resume formatting',
-      steps: [
-        'Standardize heading names and date format across sections.',
-        'Remove tables/icons/text boxes that may break ATS parsing.',
-        'Keep chronology consistent and spacing uniform.',
-      ],
+      example: 'Use section titles exactly as: Summary, Skills, Experience, Projects, Education.',
       impact: 'Medium',
     },
   ]
@@ -465,6 +453,8 @@ function buildDeterministicFallbackRecommendations(resume, evaluation) {
       current: `Lower scoring areas: ${weakAreas.join(', ')}.`,
       suggestion:
         'Prioritize edits in those areas first and re-run ATS check after each 2-3 changes to validate score movement.',
+      where: 'Sections linked to lowest ATS dimensions',
+      example: 'If formatting and project relevance are weakest, fix headings first and strengthen top 2 project bullets with outcomes.',
       impact: 'High',
     })
   }
@@ -475,6 +465,8 @@ function buildDeterministicFallbackRecommendations(resume, evaluation) {
       current: `Projects listed: ${projectHints.join(', ')}.`,
       suggestion:
         'Move the most relevant project up and add a one-line context sentence that matches the target role expectations.',
+      where: 'Projects section order and first project description',
+      example: 'Placed "Inventory Forecasting System" first and added: "Built for real-time demand prediction in retail operations."',
       impact: 'Medium',
     })
   }
@@ -492,11 +484,7 @@ function buildCoverageBoosterRecommendations(resume, missingSkills) {
       current: 'Critical ATS terms are underrepresented across sections.',
       suggestion: `Naturally include these terms where true: ${top.join(', ')}. Add 2 terms in Skills, 2 in Experience bullets, and 1-2 in Projects for better match coverage.`,
       where: 'Skills + Experience + Projects',
-      steps: [
-        'Add two missing keywords into Skills.',
-        'Insert two relevant keywords into experience bullets.',
-        'Add one to two keywords into project bullets without stuffing.',
-      ],
+      example: 'Added "Research" and "Publication" in projects, and "Machine Learning" in both skills and internship bullets.',
       impact: 'High',
     },
     {
@@ -504,11 +492,7 @@ function buildCoverageBoosterRecommendations(resume, missingSkills) {
       current: 'Role impact is not clearly tied to hiring keywords.',
       suggestion: `For your ${expRole} experience, rewrite 2 bullets using "action + stack + outcome", and include one relevant missing keyword in each bullet.`,
       where: `Experience > ${expRole}`,
-      steps: [
-        'Pick two highest-visibility bullets in this role.',
-        'Rewrite each in action + stack + outcome format.',
-        'Add one missing keyword naturally per bullet.',
-      ],
+      example: 'Implemented CI/CD in GitHub Actions for a Node.js service, reducing release turnaround time by 40%.',
       impact: 'High',
     },
   ]
@@ -529,9 +513,7 @@ function shapeRecommendationList(items, fallbackItems, minCount = 6, maxCount = 
       current: String(r?.current || 'Needs optimization').trim().slice(0, 220),
       suggestion,
       where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 140) || section,
-      steps: Array.isArray(r?.steps)
-        ? r.steps.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 3)
-        : [],
+      example: String(r?.example || '').trim().slice(0, 260),
       impact: String(r?.impact || '').trim().toLowerCase() === 'high' ? 'High' : 'Medium',
     })
   }
@@ -548,9 +530,7 @@ function shapeRecommendationList(items, fallbackItems, minCount = 6, maxCount = 
     current: String(r?.current || 'Needs optimization').trim().slice(0, 220),
     suggestion: String(r?.suggestion || 'Improve role relevance and ATS keyword coverage.').trim().slice(0, 520),
     where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 140) || String(r?.section || 'General'),
-    steps: Array.isArray(r?.steps)
-      ? r.steps.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 3)
-      : [],
+    example: String(r?.example || '').trim().slice(0, 260),
     impact: String(r?.impact || '').trim().toLowerCase() === 'high' ? 'High' : 'Medium',
   }))
 }
@@ -619,16 +599,16 @@ Output ONLY valid JSON array of 6-8 objects with exact keys:
 - current
 - suggestion
 - where
-- steps (array of exactly 3 short strings)
+- example
 - impact (High|Medium)
 
 Rules:
 1) Actionable and specific, not generic.
 2) Every suggestion should be implementable in under 10 minutes.
-3) Suggestion should include either concrete keyword targets or a rewrite pattern.
-4) Prioritize ATS score lifts first, then readability.
-5) "where" must point to exact resume location (e.g., "Experience > Software Engineer @ ABC").
-6) steps must be practical edit steps in order.
+3) Each suggestion must include measurable or keyword-based impact.
+4) "where" must point to exact resume location (e.g., "Experience > Software Engineer @ ABC").
+5) "example" must be a realistic rewrite line, not placeholder text.
+6) Avoid vague advice like "improve profile" or "add more details."
 7) No markdown, no numbering, no extra keys.`
     const skills = (resume?.skills || []).slice(0, 35).join(', ')
     const exp = (resume?.experience || [])
@@ -652,10 +632,12 @@ Rules:
     const allScores = evaluation?.scores?.all || []
     const missingSkills = collectMissingSkills(allScores)
     const weakAreas = collectWeakDimensions(allScores)
+    const lowScoreTargets = collectLowScoreEntities(allScores, 6)
     const userPrompt = `Resume: ${resume?.name || '—'} | skills: ${skills || 'None'} | exp: ${exp || 'None'} | edu: ${(resume?.education || []).slice(0, 3).map((e) => e.degree).join('; ') || 'None'} | projects: ${(resume?.projects || []).slice(0, 5).map((p) => p.name).join('; ') || 'None'}
 ATS avg: mass ${evaluation?.summary?.avgMassHiring ?? 'N/A'}% maang ${evaluation?.summary?.avgMaang ?? 'N/A'}% ivy ${evaluation?.summary?.avgIvyLeague ?? 'N/A'}
 Missing skills (ranked): ${missingSkills.slice(0, 10).map(toTitle).join(', ') || 'N/A'}
 Weak ATS dimensions: ${weakAreas.join(', ') || 'N/A'}
+Lowest scoring targets: ${lowScoreTargets.join(', ') || 'N/A'}
 Experience bullet samples: ${expBullets || 'N/A'}
 Project bullet samples: ${projectBullets || 'N/A'}
 Return JSON only with 6-8 recommendations.`
