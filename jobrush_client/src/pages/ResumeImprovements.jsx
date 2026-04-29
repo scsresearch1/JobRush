@@ -205,7 +205,6 @@ const ResumeImprovements = () => {
             </div>
           </div>
         </div>
-        <AcceptabilityPreview evaluation={evaluation} recommendations={recommendations} />
         <div className="space-y-6">
           {filteredRecommendations.map((rec, index) => (
             <div
@@ -259,6 +258,7 @@ const ResumeImprovements = () => {
                     <span className="font-medium">Example rewrite:</span> {rec.example}
                   </p>
                 )}
+                <AcceptabilityPreview evaluation={evaluation} recommendation={rec} />
               </div>
             </div>
           ))}
