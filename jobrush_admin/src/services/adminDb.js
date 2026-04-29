@@ -414,6 +414,82 @@ export async function updateUserRecord(uniqueId, patch) {
   await update(userRef(uniqueId), patch)
 }
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase()
+}
+
+function normalizePhone(phone) {
+  return String(phone || '').trim()
+}
+
+function validateBulkUserRow(row, idx) {
+  const rowLabel = `Row ${idx + 2}`
+  const name = String(row?.name || '').trim()
+  const email = normalizeEmail(row?.email)
+  const phone = normalizePhone(row?.phone)
+  if (!name) throw new Error(`${rowLabel}: Name is required.`)
+  if (name.length > 120) throw new Error(`${rowLabel}: Name is too long (max 120 characters).`)
+  if (!email) throw new Error(`${rowLabel}: Email is required.`)
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error(`${rowLabel}: Invalid email format.`)
+  if (!phone) throw new Error(`${rowLabel}: Phone is required.`)
+  if (!/^\+?[0-9()\-.\s]{7,20}$/.test(phone)) {
+    throw new Error(`${rowLabel}: Invalid phone format.`)
+  }
+  return { name, email, phone }
+}
+
+/**
+ * Creates users that bypass payment and get direct active access.
+ * @param {Array<{name: string, email: string, phone: string}>} rows
+ * @returns {Promise<{created: number}>}
+ */
+export async function bulkCreateDirectAccessUsers(rows) {
+  const input = Array.isArray(rows) ? rows : []
+  if (input.length === 0) throw new Error('Upload file has no data rows.')
+  if (input.length > 1000) throw new Error('Please upload at most 1000 users at a time.')
+
+  const cleaned = input.map((row, idx) => validateBulkUserRow(row, idx))
+  const seenEmails = new Set()
+  for (const [idx, row] of cleaned.entries()) {
+    if (seenEmails.has(row.email)) {
+      throw new Error(`Row ${idx + 2}: Duplicate email in file (${row.email}).`)
+    }
+    seenEmails.add(row.email)
+  }
+
+  const existingUsers = await listUsers()
+  const existingEmails = new Set(existingUsers.map((u) => normalizeEmail(u?.[USERDB_FIELDS.EMAIL_ID])).filter(Boolean))
+  const alreadyPresent = cleaned.find((r) => existingEmails.has(r.email))
+  if (alreadyPresent) {
+    throw new Error(`Email already exists: ${alreadyPresent.email}`)
+  }
+
+  const nowIso = new Date().toISOString()
+  const writes = cleaned.map((row) => {
+    const node = push(userdbRef())
+    const uid = node.key
+    if (!uid) throw new Error('Could not create unique user id.')
+    return set(node, {
+      [USERDB_FIELDS.UNIQUE_ID]: uid,
+      [USERDB_FIELDS.EMAIL_ID]: row.email,
+      [USERDB_FIELDS.TIMESTAMP]: nowIso,
+      [USERDB_FIELDS.ACCESS_STATUS]: 'active',
+      [USERDB_FIELDS.SUSPENDED]: false,
+      [USERDB_FIELDS.ATS_CHECKS_USED]: 0,
+      [USERDB_FIELDS.MOCK_INTERVIEWS_USED]: 0,
+      [USERDB_FIELDS.PAYMENT_REFERENCE]: null,
+      [USERDB_FIELDS.ACCESS_REQUESTED_AT]: null,
+      [USERDB_FIELDS.COUPON_CODE_PENDING]: null,
+      name: row.name,
+      phone: row.phone,
+      accessGrantedBy: 'admin_bulk_upload',
+      accessGrantedAt: nowIso,
+    })
+  })
+  await Promise.all(writes)
+  return { created: cleaned.length }
+}
+
 export async function listCoupons() {
   const snapshot = await get(couponsRef())
   if (!snapshot.exists()) return []

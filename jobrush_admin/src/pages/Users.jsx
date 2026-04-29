@@ -7,8 +7,16 @@ import {
   CheckBadgeIcon,
   NoSymbolIcon,
   EnvelopeIcon,
+  ArrowDownTrayIcon,
+  DocumentArrowUpIcon,
 } from '@heroicons/react/24/outline'
-import { listUsers, deleteUser, updateUserRecord, recordCouponRedemptionFromApproval } from '../services/adminDb'
+import {
+  listUsers,
+  deleteUser,
+  updateUserRecord,
+  recordCouponRedemptionFromApproval,
+  bulkCreateDirectAccessUsers,
+} from '../services/adminDb'
 import { USERDB_FIELDS } from '../config/schema'
 import { formatTimestampIST } from '../utils/formatIst'
 import PaymentReviewModal from '../components/PaymentReviewModal'
@@ -16,6 +24,56 @@ import { sendPaymentDecisionEmail, sendPaymentPendingReminderEmail } from '../se
 
 const QUOTA_ATS = 5
 const QUOTA_MOCK = 5
+
+function parseCsvLine(line) {
+  const out = []
+  let cur = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"'
+        i += 1
+      } else {
+        inQuotes = !inQuotes
+      }
+      continue
+    }
+    if (ch === ',' && !inQuotes) {
+      out.push(cur.trim())
+      cur = ''
+      continue
+    }
+    cur += ch
+  }
+  out.push(cur.trim())
+  return out
+}
+
+function parseBulkUsersCsv(text) {
+  const normalized = String(text || '').replace(/^\uFEFF/, '')
+  const lines = normalized
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+  if (lines.length < 2) throw new Error('CSV must include headers and at least one data row.')
+  const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().replace(/\s+/g, ''))
+  const nameIdx = headers.indexOf('name')
+  const emailIdx = headers.indexOf('email')
+  const phoneIdx = headers.indexOf('phone')
+  if (nameIdx === -1 || emailIdx === -1 || phoneIdx === -1) {
+    throw new Error('CSV headers must include Name, Email, Phone.')
+  }
+  return lines.slice(1).map((line) => {
+    const cols = parseCsvLine(line)
+    return {
+      name: cols[nameIdx] || '',
+      email: cols[emailIdx] || '',
+      phone: cols[phoneIdx] || '',
+    }
+  })
+}
 
 function deriveStatus(row) {
   if (row[USERDB_FIELDS.SUSPENDED] === true) {
@@ -65,6 +123,10 @@ export default function Users() {
   })
   const [paymentModal, setPaymentModal] = useState({ open: false, row: null })
   const [reminderMsg, setReminderMsg] = useState({ type: '', text: '' })
+  const [bulkRows, setBulkRows] = useState([])
+  const [bulkFileName, setBulkFileName] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState({ type: '', text: '' })
 
   const load = async () => {
     setError(null)
@@ -192,6 +254,126 @@ export default function Users() {
           <ArrowPathIcon className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
+      </div>
+
+      <div className="mb-5 rounded-xl border border-admin-700 bg-admin-900/60 p-4">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-white">Bulk upload users (direct access)</h2>
+            <p className="text-xs text-admin-400 mt-1">
+              Upload Name, Email, Phone. These users skip QR payment and are created as active immediately.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const csv = 'Name,Email,Phone\nJane Doe,jane@example.com,+91 9876543210\n'
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = 'user-bulk-upload-template.csv'
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+              URL.revokeObjectURL(url)
+            }}
+            className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-admin-800 text-admin-100 hover:bg-admin-700 text-xs font-medium shrink-0"
+          >
+            <ArrowDownTrayIcon className="w-4 h-4" />
+            Download template
+          </button>
+        </div>
+
+        <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-center">
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              setBulkMsg({ type: '', text: '' })
+              if (!file) {
+                setBulkRows([])
+                setBulkFileName('')
+                return
+              }
+              try {
+                const text = await file.text()
+                const parsed = parseBulkUsersCsv(text)
+                setBulkRows(parsed)
+                setBulkFileName(file.name)
+                setBulkMsg({ type: 'ok', text: `Loaded ${parsed.length} row(s) from ${file.name}.` })
+              } catch (err) {
+                setBulkRows([])
+                setBulkFileName(file.name)
+                setBulkMsg({ type: 'err', text: err?.message || 'Could not parse CSV file.' })
+              }
+            }}
+            className="block w-full sm:w-auto text-xs text-admin-300 file:mr-3 file:rounded-lg file:border-0 file:bg-admin-800 file:px-3 file:py-2 file:text-admin-100 hover:file:bg-admin-700"
+          />
+          <button
+            type="button"
+            disabled={bulkBusy || bulkRows.length === 0}
+            onClick={async () => {
+              setBulkBusy(true)
+              setBulkMsg({ type: '', text: '' })
+              try {
+                const res = await bulkCreateDirectAccessUsers(bulkRows)
+                setBulkRows([])
+                setBulkFileName('')
+                setBulkMsg({ type: 'ok', text: `${res.created} users uploaded with direct access.` })
+                await load()
+              } catch (err) {
+                setBulkMsg({ type: 'err', text: err?.message || 'Bulk upload failed.' })
+              } finally {
+                setBulkBusy(false)
+              }
+            }}
+            className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-emerald-900/50 text-emerald-200 text-xs font-medium ring-1 ring-emerald-800/60 hover:bg-emerald-900/70 disabled:opacity-50"
+          >
+            <DocumentArrowUpIcon className="w-4 h-4" />
+            {bulkBusy ? 'Uploading…' : 'Upload users'}
+          </button>
+        </div>
+        {bulkFileName && <p className="text-xs text-admin-500 mt-2">Selected file: {bulkFileName}</p>}
+        {bulkRows.length > 0 && (
+          <div className="mt-3 rounded-lg border border-admin-700 overflow-hidden">
+            <div className="px-3 py-2 text-xs text-admin-400 bg-admin-900 border-b border-admin-700">
+              Previewing first {Math.min(5, bulkRows.length)} row(s) of {bulkRows.length}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[480px]">
+                <thead className="bg-admin-900/80 border-b border-admin-700">
+                  <tr>
+                    <th className="text-left py-2 px-3 text-admin-300 font-medium">Name</th>
+                    <th className="text-left py-2 px-3 text-admin-300 font-medium">Email</th>
+                    <th className="text-left py-2 px-3 text-admin-300 font-medium">Phone</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-admin-800">
+                  {bulkRows.slice(0, 5).map((row, idx) => (
+                    <tr key={`${row.email}-${idx}`} className="bg-admin-900/40">
+                      <td className="py-2 px-3 text-admin-100">{row.name || '—'}</td>
+                      <td className="py-2 px-3 text-admin-200 break-all">{row.email || '—'}</td>
+                      <td className="py-2 px-3 text-admin-200">{row.phone || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {bulkMsg.text && (
+          <p
+            className={`text-xs rounded-lg px-3 py-2 border mt-3 ${
+              bulkMsg.type === 'ok'
+                ? 'text-emerald-200 border-emerald-800/80 bg-emerald-950/40'
+                : 'text-red-300 border-red-900/60 bg-red-950/30'
+            }`}
+          >
+            {bulkMsg.text}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center mb-4">
