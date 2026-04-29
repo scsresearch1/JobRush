@@ -146,16 +146,6 @@ export async function getRecommendations(resume, evaluation) {
 }
 
 /**
- * Apply a single AI correction to the resume
- * @param {Object} resume - Current parsed resume
- * @param {Object} recommendation - { section, current, suggestion, impact }
- * @returns {Promise<{ resume: Object }>} Modified resume
- */
-export async function applyCorrection(resume, recommendation) {
-  return fetchApi('/api/apply-correction', { resume, recommendation })
-}
-
-/**
  * Generate Statement of Purpose for university applications
  * @param {Object} resume - Parsed resume
  * @param {string} targetProgram - Target program/degree

@@ -3,17 +3,13 @@ import { Link } from 'react-router-dom'
 import {
   ArrowLeftIcon,
   SparklesIcon,
-  CheckCircleIcon,
-  ArrowPathIcon,
   DocumentMagnifyingGlassIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline'
 import DownloadResumeModal from '../components/DownloadResumeModal.jsx'
-import { getRecommendations, applyCorrection, pingHealth } from '../services/groqService.js'
+import { getRecommendations, pingHealth } from '../services/groqService.js'
 import { evaluateResume } from '../ats/index.js'
 import { getDisplayLines } from '../utils/cleanAiText.js'
-import { buildStorableAtsReport, getUser, incrementAtsCheckUsage, saveAtsReport } from '../services/database.js'
-import { USERDB_FIELDS } from '../config/databaseSchema.js'
 
 const FALLBACK_RECOMMENDATIONS = [
   { section: 'Skills', current: 'Review your skills section', suggestion: 'Add ATS-targeted keywords from job descriptions', impact: 'High' },
@@ -23,26 +19,45 @@ const FALLBACK_RECOMMENDATIONS = [
 ]
 
 const STORAGE_KEY = 'jobRush_parsed_resume'
+const RECOMMENDATION_COOLDOWN_MS = 45000
 
 const ResumeImprovements = () => {
   const [resume, setResume] = useState(null)
   const [showDownloadModal, setShowDownloadModal] = useState(false)
-  const [applied, setApplied] = useState({})
   const [recommendations, setRecommendations] = useState(FALLBACK_RECOMMENDATIONS)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [applying, setApplying] = useState(null) // index | 'all' | null
-  /** When Apply All runs, show progress (e.g. 2 / 4). */
-  const [applyAllProgress, setApplyAllProgress] = useState(null) // { done, total } | null
-  const [applyError, setApplyError] = useState(null)
+  const [cooldownUntil, setCooldownUntil] = useState(0)
+  const [nowTs, setNowTs] = useState(Date.now())
+  const [iterationIndex, setIterationIndex] = useState(0)
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTs(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const cooldownRemainingMs = Math.max(0, cooldownUntil - nowTs)
+  const cooldownRemainingSec = Math.ceil(cooldownRemainingMs / 1000)
+  const isCooldownActive = cooldownRemainingMs > 0
+  const groupedRecommendations = React.useMemo(() => {
+    const out = []
+    for (let i = 0; i < recommendations.length; i += 3) out.push(recommendations.slice(i, i + 3))
+    return out
+  }, [recommendations])
+  const totalIterations = groupedRecommendations.length || 1
+  const activeIteration = Math.min(iterationIndex, totalIterations - 1)
+  const visibleRecommendations = groupedRecommendations[activeIteration] || []
 
   const fetchRecommendations = React.useCallback(async () => {
+    const now = Date.now()
+    if (cooldownUntil > now) return
     const stored = localStorage.getItem(STORAGE_KEY)
     const parsed = stored ? JSON.parse(stored) : null
     if (!parsed) return
     setResume(parsed)
     setLoading(true)
     setError(null)
+    setCooldownUntil(now + RECOMMENDATION_COOLDOWN_MS)
     const evaluation = evaluateResume(parsed)
     try {
       console.log('[ResumeImprovements] Fetching recommendations')
@@ -55,7 +70,10 @@ const ResumeImprovements = () => {
         return
       }
       const { recommendations: recs } = await getRecommendations(parsed, evaluation)
-      if (recs?.length > 0) setRecommendations(recs)
+      if (recs?.length > 0) {
+        setRecommendations(recs)
+        setIterationIndex(0)
+      }
       setError(null)
       console.log('[ResumeImprovements] Success', { count: recs?.length })
     } catch (err) {
@@ -64,110 +82,11 @@ const ResumeImprovements = () => {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [cooldownUntil])
 
   useEffect(() => {
     fetchRecommendations()
   }, [fetchRecommendations])
-
-  const saveResume = (modified) => {
-    setResume(modified)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(modified))
-  }
-
-  const consumePendingAtsUsage = async (resumeForUsage) => {
-    let user = {}
-    try {
-      user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
-    } catch {
-      user = {}
-    }
-    const uid = user?.uniqueId
-    if (!uid || String(uid).startsWith('local_')) return
-
-    let pending = null
-    try {
-      pending = JSON.parse(sessionStorage.getItem('_jrush_ats_pending') || 'null')
-    } catch {
-      pending = null
-    }
-    if (!pending || pending.uid !== uid) return
-
-    const evaluation = evaluateResume(resumeForUsage)
-    const payload = buildStorableAtsReport(evaluation)
-    if (payload) {
-      await saveAtsReport(uid, payload)
-    }
-    await incrementAtsCheckUsage(uid)
-    try {
-      const latest = await getUser(uid)
-      if (latest) {
-        const raw = localStorage.getItem('jobRush_user')
-        const prior = raw ? JSON.parse(raw) : {}
-        localStorage.setItem(
-          'jobRush_user',
-          JSON.stringify({
-            ...prior,
-            accessStatus: latest[USERDB_FIELDS.ACCESS_STATUS] || prior.accessStatus,
-            atsChecksUsed: Number(latest[USERDB_FIELDS.ATS_CHECKS_USED]) || prior.atsChecksUsed || 0,
-            mockInterviewsUsed:
-              Number(latest[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || prior.mockInterviewsUsed || 0,
-          })
-        )
-      }
-    } catch {
-      /* ignore */
-    }
-    try {
-      sessionStorage.removeItem('_jrush_ats_pending')
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const handleApply = async (index) => {
-    if (!resume || applied[index] || applying != null) return
-    setApplying(index)
-    setApplyError(null)
-    try {
-      await pingHealth(3, 4000)
-      const { resume: modified } = await applyCorrection(resume, recommendations[index])
-      saveResume(modified)
-      setApplied((prev) => ({ ...prev, [index]: true }))
-      await consumePendingAtsUsage(modified)
-    } catch (err) {
-      setApplyError(err.message)
-    } finally {
-      setApplying(null)
-    }
-  }
-
-  const handleApplyAll = async () => {
-    if (!resume || applying != null) return
-    const toApply = recommendations.map((_, i) => i).filter((i) => !applied[i])
-    if (toApply.length === 0) return
-    setApplying('all')
-    setApplyAllProgress({ done: 0, total: toApply.length })
-    setApplyError(null)
-    let current = resume
-    try {
-      await pingHealth(3, 4000)
-      for (let step = 0; step < toApply.length; step++) {
-        const index = toApply[step]
-        setApplyAllProgress({ done: step, total: toApply.length })
-        const { resume: modified } = await applyCorrection(current, recommendations[index])
-        current = modified
-        setApplied((prev) => ({ ...prev, [index]: true }))
-      }
-      saveResume(current)
-      await consumePendingAtsUsage(current)
-    } catch (err) {
-      setApplyError(err.message)
-    } finally {
-      setApplying(null)
-      setApplyAllProgress(null)
-    }
-  }
 
   return (
     <div>
@@ -200,15 +119,13 @@ const ResumeImprovements = () => {
                 <ArrowDownTrayIcon className="w-5 h-5" />
                 Download PDF
               </button>
-              {Object.keys(applied).length > 0 && (
-                <Link
-                  to="/resume-upload"
-                  className="inline-flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium"
-                >
-                  <DocumentMagnifyingGlassIcon className="w-5 h-5" />
-                  View updated resume
-                </Link>
-              )}
+              <Link
+                to="/resume-upload"
+                className="inline-flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium"
+              >
+                <DocumentMagnifyingGlassIcon className="w-5 h-5" />
+                View resume
+              </Link>
             </div>
           )}
         </div>
@@ -237,118 +154,99 @@ const ResumeImprovements = () => {
             <button
               type="button"
               onClick={fetchRecommendations}
+              disabled={isCooldownActive || loading}
               className="mt-3 text-sm font-medium text-primary-700 hover:text-primary-800 underline"
             >
-              Retry
+              {isCooldownActive ? `Retry available in ${cooldownRemainingSec}s` : 'Retry'}
             </button>
           </div>
         )}
-        {applyError && (
-          <div className="mb-4 max-w-3xl rounded-xl border border-red-200 bg-red-50/90 p-4 text-sm text-red-950 shadow-sm">
-            <p className="font-semibold text-red-900">Could not apply this AI correction</p>
-            <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed text-red-900/90">{applyError}</p>
+        {isCooldownActive && (
+          <div className="mb-4 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+            <span>Please wait {cooldownRemainingSec}s before refreshing recommendations.</span>
           </div>
         )}
-
-        <div className="flex flex-col items-end gap-1 mb-6">
-          <button
-            onClick={handleApplyAll}
-            disabled={
-              !resume ||
-              applying != null ||
-              Object.keys(applied).length === recommendations.length
-            }
-            className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {applying === 'all' ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Applying
-                {applyAllProgress
-                  ? ` (${applyAllProgress.done + 1}/${applyAllProgress.total})`
-                  : '...'}
-              </>
-            ) : (
-              <>
-                <ArrowPathIcon className="w-5 h-5" />
-                Apply All Corrections
-              </>
-            )}
-          </button>
-          {applying === 'all' && applyAllProgress && (
-            <span className="text-xs text-gray-500">
-              Step {applyAllProgress.done + 1} of {applyAllProgress.total} — please wait
-            </span>
-          )}
-        </div>
-
         <div className="space-y-6">
-          {recommendations.map((rec, index) => (
-            <div
-              key={index}
-              className={`p-4 sm:p-6 rounded-xl border-2 ${
-                applied[index] ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="font-bold text-gray-900">{rec.section}</h3>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      rec.impact === 'High' ? 'bg-amber-100 text-amber-800' : 'bg-gray-200 text-gray-700'
-                    }`}>
-                      {rec.impact} impact
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-1">
-                    <span className="font-medium">Current:</span> {rec.current}
-                  </p>
-                  <p className="text-sm text-primary-700">
-                    <span className="font-medium">Suggestion:</span>{' '}
-                    {typeof rec.suggestion === 'string' ? (
-                      (() => {
-                        const lines = getDisplayLines(rec.suggestion)
-                        return lines.length > 0 ? (
-                          <span className="block mt-1 space-y-1">
-                            {lines.map((line, i) => (
-                              <span key={i} className="flex gap-2">
-                                <span className="text-primary-500 shrink-0">•</span>
-                                <span>{line}</span>
-                              </span>
-                            ))}
-                          </span>
-                        ) : (
-                          rec.suggestion.trim() || '—'
-                        )
-                      })()
-                    ) : (
-                      rec.suggestion ?? '—'
-                    )}
-                  </p>
-                </div>
+          {recommendations.length > 0 && (
+            <div className="mb-2 flex flex-col gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-700">
+                <span className="font-semibold">Iteration {activeIteration + 1}</span> of {totalIterations}
+                {' '}({visibleRecommendations.length} recommendations)
+              </p>
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handleApply(index)}
-                  disabled={applied[index] || applying != null || !resume}
-                  className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium shrink-0 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto ${
-                    applied[index]
-                      ? 'bg-green-100 text-green-700 cursor-default'
-                      : 'bg-primary-600 text-white hover:bg-primary-700'
-                  }`}
+                  type="button"
+                  onClick={() => setIterationIndex((v) => Math.max(0, v - 1))}
+                  disabled={activeIteration === 0}
+                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {applied[index] ? (
-                    <>
-                      <CheckCircleIcon className="w-5 h-5" />
-                      Applied
-                    </>
-                  ) : applying === index ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Applying...
-                    </>
-                  ) : (
-                    'Apply'
-                  )}
+                  Previous
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setIterationIndex((v) => Math.min(totalIterations - 1, v + 1))}
+                  disabled={activeIteration >= totalIterations - 1}
+                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+          {visibleRecommendations.map((rec, index) => (
+            <div
+              key={`${activeIteration}-${index}-${rec.section}`}
+              className="p-4 sm:p-6 rounded-xl border-2 border-gray-200 bg-gray-50"
+            >
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="font-bold text-gray-900">{rec.section}</h3>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    rec.impact === 'High' ? 'bg-amber-100 text-amber-800' : 'bg-gray-200 text-gray-700'
+                  }`}>
+                    {rec.impact} impact
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600 mb-1">
+                  <span className="font-medium">Current:</span> {rec.current}
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <span className="font-medium">Where to apply:</span> {rec.where || rec.section}
+                </p>
+                <p className="text-sm text-primary-700">
+                  <span className="font-medium">Suggestion:</span>{' '}
+                  {typeof rec.suggestion === 'string' ? (
+                    (() => {
+                      const lines = getDisplayLines(rec.suggestion)
+                      return lines.length > 0 ? (
+                        <span className="block mt-1 space-y-1">
+                          {lines.map((line, i) => (
+                            <span key={i} className="flex gap-2">
+                              <span className="text-primary-500 shrink-0">•</span>
+                              <span>{line}</span>
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        rec.suggestion.trim() || '—'
+                      )
+                    })()
+                  ) : (
+                    rec.suggestion ?? '—'
+                  )}
+                </p>
+                {Array.isArray(rec.steps) && rec.steps.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+                    <p className="text-sm font-medium text-gray-900">Step-by-step</p>
+                    <div className="mt-2 space-y-1">
+                      {rec.steps.map((step, i) => (
+                        <p key={i} className="text-sm text-gray-700">
+                          {i + 1}. {step}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))}

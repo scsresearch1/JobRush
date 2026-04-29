@@ -84,17 +84,13 @@ const groq = process.env.GROQ_API_KEY
 
 /** Default: smaller/faster model to stay within Groq free-tier limits. Set GROQ_MODEL to override. */
 const GROQ_MODEL = String(process.env.GROQ_MODEL || 'llama-3.1-8b-instant').trim()
-/** Used only for full-resume JSON rewrite where 8B may truncate or break JSON. Set GROQ_MODEL_HEAVY= same as GROQ_MODEL to force one model everywhere. */
-const GROQ_MODEL_HEAVY = String(process.env.GROQ_MODEL_HEAVY || 'llama-3.3-70b-versatile').trim()
 
 const MAX_CHAT_TURNS = 8
 const MAX_CHAT_MSG_CHARS = 8000
-const RESUME_LLM_MAX_STR = 2000
 /** Groq completion ceiling for this app (avoid mid-stream cuts; models typically allow ≤ 8k). */
 const GROQ_MAX_COMPLETION_TOKENS = 8192
 const TOKENS_EXPLAIN_ATS = 2048
 const TOKENS_RECOMMENDATIONS = 2048
-const TOKENS_APPLY_CORRECTION = 8192
 const TOKENS_SOP = 2048
 const TOKENS_COVER_LETTER = 2048
 const TOKENS_INTERVIEW_TIPS = 2048
@@ -189,25 +185,6 @@ async function sendResendMail({ from, to, subject, html, text, replyTo }) {
     }
   }
   throw lastErr
-}
-
-function truncateStringsDeep(val, maxLen, seen = new WeakSet()) {
-  if (val == null) return val
-  if (typeof val === 'string') return val.length > maxLen ? `${val.slice(0, maxLen)}…` : val
-  if (typeof val !== 'object') return val
-  if (seen.has(val)) return val
-  seen.add(val)
-  if (Array.isArray(val)) return val.map((x) => truncateStringsDeep(x, maxLen, seen))
-  const o = {}
-  for (const [k, v] of Object.entries(val)) {
-    o[k] = truncateStringsDeep(v, maxLen, seen)
-  }
-  return o
-}
-
-/** Compact JSON (no whitespace) to minimize prompt tokens. */
-function compactJson(obj) {
-  return JSON.stringify(obj)
 }
 
 async function groqCompleteMessages(messages, maxTokens, model, temperature) {
@@ -331,6 +308,253 @@ function parseJsonArraySalvage(raw) {
   return []
 }
 
+function titleCaseWord(word) {
+  return String(word || '')
+    .toLowerCase()
+    .replace(/(^|\s)\S/g, (m) => m.toUpperCase())
+}
+
+function toTitle(input) {
+  const s = String(input || '').replace(/[_-]+/g, ' ').trim()
+  if (!s) return ''
+  return titleCaseWord(s)
+}
+
+function uniqueStrings(items, limit = 12) {
+  const out = []
+  const seen = new Set()
+  for (const item of items || []) {
+    const v = String(item || '').trim()
+    if (!v) continue
+    const key = v.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(v)
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+function collectMissingSkills(scores) {
+  const freq = new Map()
+  for (const s of scores || []) {
+    for (const skill of s?.missing_mandatory || []) {
+      const key = String(skill || '').trim().toLowerCase()
+      if (!key) continue
+      freq.set(key, (freq.get(key) || 0) + 2)
+    }
+    for (const skill of s?.missing_preferred || []) {
+      const key = String(skill || '').trim().toLowerCase()
+      if (!key) continue
+      freq.set(key, (freq.get(key) || 0) + 1)
+    }
+  }
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([k]) => k)
+}
+
+function collectWeakDimensions(scores) {
+  const dims = [
+    { key: 'mandatory_skill_score', label: 'mandatory skills', badBelow: 70 },
+    { key: 'preferred_skill_score', label: 'preferred skills', badBelow: 65 },
+    { key: 'project_relevance', label: 'project relevance', badBelow: 65 },
+    { key: 'education_match', label: 'education relevance', badBelow: 65 },
+    { key: 'formatting_score', label: 'resume formatting', badBelow: 75 },
+  ]
+  const out = []
+  for (const d of dims) {
+    let sum = 0
+    let n = 0
+    for (const s of scores || []) {
+      const v = Number(s?.breakdown?.[d.key])
+      if (Number.isFinite(v)) {
+        sum += v
+        n += 1
+      }
+    }
+    if (!n) continue
+    const avg = Math.round(sum / n)
+    if (avg < d.badBelow) out.push(`${d.label} (${avg}%)`)
+  }
+  return out.slice(0, 4)
+}
+
+function buildDeterministicFallbackRecommendations(resume, evaluation) {
+  const scores = evaluation?.scores?.all || []
+  const missingSkills = collectMissingSkills(scores)
+  const weakAreas = collectWeakDimensions(scores)
+  const roleHints = uniqueStrings((resume?.experience || []).map((e) => e?.role || e?.title), 3)
+  const projectHints = uniqueStrings((resume?.projects || []).map((p) => p?.name), 3)
+  const firstRole = roleHints[0] || 'Most relevant experience entry'
+  const firstProject = projectHints[0] || 'Top relevant project'
+  const topSkillLine = missingSkills.length
+    ? `Add these high-impact keywords where true: ${missingSkills.slice(0, 6).map(toTitle).join(', ')}.`
+    : 'Add role-specific keywords from the target job description where they are genuinely used.'
+
+  const recs = [
+    {
+      section: 'Skills',
+      current: 'Skills list may miss ATS-priority keywords.',
+      suggestion: `${topSkillLine} Group skills by category (Languages, Frameworks, Tools) so ATS can parse them faster.`,
+      where: 'Skills section',
+      steps: [
+        'Pick the top 5 missing skills that genuinely match your experience.',
+        'Add them under category headers (Languages, Frameworks, Tools).',
+        'Remove duplicates and keep the section concise and scannable.',
+      ],
+      impact: 'High',
+    },
+    {
+      section: 'Experience',
+      current: 'Bullets are likely responsibility-heavy and impact-light.',
+      suggestion:
+        'Rewrite top 4 bullets using Action + Scope + Result. Include one measurable result per role (%, time saved, revenue, users, latency, defects).',
+      where: `Experience > ${firstRole}`,
+      steps: [
+        'Rewrite first two bullets starting with strong action verbs.',
+        'Add one concrete metric to each rewritten bullet.',
+        'Keep each bullet under two lines for ATS readability.',
+      ],
+      impact: 'High',
+    },
+    {
+      section: 'Projects',
+      current: 'Project bullets may not clearly map to job requirements.',
+      suggestion:
+        'For each core project, add stack + problem + your contribution + measurable outcome in 2-3 bullets. Mirror job keywords naturally in those bullets.',
+      where: `Projects > ${firstProject}`,
+      steps: [
+        'Update the first project with tech stack and project objective.',
+        'Add your exact contribution in one clear bullet.',
+        'Add measurable outcome (users, %, latency, time saved, etc.).',
+      ],
+      impact: 'High',
+    },
+    {
+      section: 'Summary',
+      current: 'No focused profile summary for the target role.',
+      suggestion: `Add a 2-3 line summary tailored to ${roleHints.join(', ') || 'your target role'} with strongest tools, domain focus, and proof of impact.`,
+      where: 'Resume header > Professional Summary',
+      steps: [
+        'Open with target role and years/domain focus.',
+        'Mention strongest tools or technologies.',
+        'Close with one impact statement tied to outcomes.',
+      ],
+      impact: 'Medium',
+    },
+    {
+      section: 'Formatting',
+      current: 'Formatting may reduce ATS extraction quality.',
+      suggestion:
+        'Use standard headings, simple chronology, consistent date format, and avoid dense graphics/tables. Keep section titles explicit (Experience, Projects, Skills, Education).',
+      where: 'Overall resume formatting',
+      steps: [
+        'Standardize heading names and date format across sections.',
+        'Remove tables/icons/text boxes that may break ATS parsing.',
+        'Keep chronology consistent and spacing uniform.',
+      ],
+      impact: 'Medium',
+    },
+  ]
+
+  if (weakAreas.length) {
+    recs.push({
+      section: 'ATS Gaps',
+      current: `Lower scoring areas: ${weakAreas.join(', ')}.`,
+      suggestion:
+        'Prioritize edits in those areas first and re-run ATS check after each 2-3 changes to validate score movement.',
+      impact: 'High',
+    })
+  }
+
+  if (projectHints.length) {
+    recs.push({
+      section: 'Project Positioning',
+      current: `Projects listed: ${projectHints.join(', ')}.`,
+      suggestion:
+        'Move the most relevant project up and add a one-line context sentence that matches the target role expectations.',
+      impact: 'Medium',
+    })
+  }
+
+  return recs.slice(0, 8)
+}
+
+function buildCoverageBoosterRecommendations(resume, missingSkills) {
+  const top = missingSkills.slice(0, 6).map(toTitle)
+  if (!top.length) return []
+  const expRole = uniqueStrings((resume?.experience || []).map((e) => e?.role || e?.title), 1)[0] || 'your target role'
+  return [
+    {
+      section: 'Keyword Coverage',
+      current: 'Critical ATS terms are underrepresented across sections.',
+      suggestion: `Naturally include these terms where true: ${top.join(', ')}. Add 2 terms in Skills, 2 in Experience bullets, and 1-2 in Projects for better match coverage.`,
+      where: 'Skills + Experience + Projects',
+      steps: [
+        'Add two missing keywords into Skills.',
+        'Insert two relevant keywords into experience bullets.',
+        'Add one to two keywords into project bullets without stuffing.',
+      ],
+      impact: 'High',
+    },
+    {
+      section: 'Experience Alignment',
+      current: 'Role impact is not clearly tied to hiring keywords.',
+      suggestion: `For your ${expRole} experience, rewrite 2 bullets using "action + stack + outcome", and include one relevant missing keyword in each bullet.`,
+      where: `Experience > ${expRole}`,
+      steps: [
+        'Pick two highest-visibility bullets in this role.',
+        'Rewrite each in action + stack + outcome format.',
+        'Add one missing keyword naturally per bullet.',
+      ],
+      impact: 'High',
+    },
+  ]
+}
+
+function shapeRecommendationList(items, fallbackItems, minCount = 6, maxCount = 8) {
+  const dedupe = new Set()
+  const out = []
+  const pushUnique = (r) => {
+    const section = String(r?.section || '').trim().slice(0, 64)
+    const suggestion = String(r?.suggestion || '').trim().slice(0, 520)
+    if (!section || !suggestion) return
+    const key = `${section.toLowerCase()}|${suggestion.toLowerCase()}`
+    if (dedupe.has(key)) return
+    dedupe.add(key)
+    out.push({
+      section,
+      current: String(r?.current || 'Needs optimization').trim().slice(0, 220),
+      suggestion,
+      where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 140) || section,
+      steps: Array.isArray(r?.steps)
+        ? r.steps.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 3)
+        : [],
+      impact: String(r?.impact || '').trim().toLowerCase() === 'high' ? 'High' : 'Medium',
+    })
+  }
+
+  for (const item of items || []) pushUnique(item)
+  for (const item of fallbackItems || []) {
+    if (out.length >= maxCount) break
+    pushUnique(item)
+  }
+
+  if (out.length >= minCount) return out.slice(0, maxCount)
+  return (fallbackItems || []).slice(0, maxCount).map((r) => ({
+    section: String(r?.section || 'General').trim().slice(0, 64),
+    current: String(r?.current || 'Needs optimization').trim().slice(0, 220),
+    suggestion: String(r?.suggestion || 'Improve role relevance and ATS keyword coverage.').trim().slice(0, 520),
+    where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 140) || String(r?.section || 'General'),
+    steps: Array.isArray(r?.steps)
+      ? r.steps.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 3)
+      : [],
+    impact: String(r?.impact || '').trim().toLowerCase() === 'high' ? 'High' : 'Medium',
+  }))
+}
+
 /**
  * POST /api/explain-ats
  * Body: { entity, score, matchedMandatory, missingMandatory, matchedPreferred, missingPreferred, breakdown }
@@ -389,35 +613,67 @@ app.post('/api/recommendations', async (req, res) => {
   try {
     const { resume, evaluation } = req.body
 
-    const systemPrompt = `Resume coach. Output ONLY a JSON array of 3-4 objects: section, current, suggestion, impact (High|Medium). Short suggestion text. No markdown.`
+    const systemPrompt = `You are a senior ATS resume strategist.
+Output ONLY valid JSON array of 6-8 objects with exact keys:
+- section
+- current
+- suggestion
+- where
+- steps (array of exactly 3 short strings)
+- impact (High|Medium)
+
+Rules:
+1) Actionable and specific, not generic.
+2) Every suggestion should be implementable in under 10 minutes.
+3) Suggestion should include either concrete keyword targets or a rewrite pattern.
+4) Prioritize ATS score lifts first, then readability.
+5) "where" must point to exact resume location (e.g., "Experience > Software Engineer @ ABC").
+6) steps must be practical edit steps in order.
+7) No markdown, no numbering, no extra keys.`
     const skills = (resume?.skills || []).slice(0, 35).join(', ')
     const exp = (resume?.experience || [])
       .slice(0, 6)
       .map((e) => `${e.role || e.title}@${e.company}`)
       .join('; ')
+    const expBullets = (resume?.experience || [])
+      .slice(0, 4)
+      .flatMap((e) => (Array.isArray(e?.responsibilities) ? e.responsibilities.slice(0, 2) : []))
+      .map((b) => String(b || '').trim())
+      .filter(Boolean)
+      .slice(0, 6)
+      .join(' | ')
+    const projectBullets = (resume?.projects || [])
+      .slice(0, 4)
+      .flatMap((p) => (Array.isArray(p?.highlights) ? p.highlights.slice(0, 2) : []))
+      .map((b) => String(b || '').trim())
+      .filter(Boolean)
+      .slice(0, 6)
+      .join(' | ')
+    const allScores = evaluation?.scores?.all || []
+    const missingSkills = collectMissingSkills(allScores)
+    const weakAreas = collectWeakDimensions(allScores)
     const userPrompt = `Resume: ${resume?.name || '—'} | skills: ${skills || 'None'} | exp: ${exp || 'None'} | edu: ${(resume?.education || []).slice(0, 3).map((e) => e.degree).join('; ') || 'None'} | projects: ${(resume?.projects || []).slice(0, 5).map((p) => p.name).join('; ') || 'None'}
 ATS avg: mass ${evaluation?.summary?.avgMassHiring ?? 'N/A'}% maang ${evaluation?.summary?.avgMaang ?? 'N/A'}% ivy ${evaluation?.summary?.avgIvyLeague ?? 'N/A'}
-Missing skills (sample): ${[...new Set((evaluation?.scores?.all || []).flatMap((s) => s.missing_mandatory || []))].slice(0, 8).join(', ') || 'N/A'}
-JSON only: [{"section":"Skills","current":"...","suggestion":"...","impact":"High"},...]`
+Missing skills (ranked): ${missingSkills.slice(0, 10).map(toTitle).join(', ') || 'N/A'}
+Weak ATS dimensions: ${weakAreas.join(', ') || 'N/A'}
+Experience bullet samples: ${expBullets || 'N/A'}
+Project bullet samples: ${projectBullets || 'N/A'}
+Return JSON only with 6-8 recommendations.`
 
     const raw = await callGroq(systemPrompt, userPrompt, TOKENS_RECOMMENDATIONS, GROQ_MODEL, true)
-    let recommendations = parseJsonArraySalvage(raw).filter(
-      (r) =>
-        r &&
-        typeof r === 'object' &&
-        String(r.section || '').trim() &&
-        String(r.suggestion || '').trim()
-    )
-    if (!Array.isArray(recommendations) || recommendations.length === 0) {
-      recommendations = [
-        {
-          section: 'General',
-          current: '—',
-          suggestion: 'We could not load complete recommendations. Please try again in a moment.',
-          impact: 'Medium',
-        },
-      ]
-    }
+    const llmRecommendations = parseJsonArraySalvage(raw)
+      .filter(
+        (r) =>
+          r &&
+          typeof r === 'object' &&
+          String(r.section || '').trim() &&
+          String(r.suggestion || '').trim()
+      )
+    const fallback = [
+      ...buildDeterministicFallbackRecommendations(resume, evaluation),
+      ...buildCoverageBoosterRecommendations(resume, missingSkills),
+    ]
+    const recommendations = shapeRecommendationList(llmRecommendations, fallback, 6, 8)
     res.json({ recommendations })
   } catch (err) {
     console.error('recommendations error:', err)
@@ -425,73 +681,6 @@ JSON only: [{"section":"Skills","current":"...","suggestion":"...","impact":"Hig
     res.status(status).json({
       error: err.message || 'Failed to generate recommendations',
     })
-  }
-})
-
-/** Merge LLM output with original resume - never lose name, email, phone, or any entry */
-function mergeResumePreservingOriginal(original, modified) {
-  const out = { ...modified }
-  out.name = (modified.name || '').trim() || (original.name || '').trim()
-  out.email = (modified.email || '').trim() || (original.email || '').trim()
-  out.phone = (modified.phone || '').trim() || (original.phone || '').trim()
-  const origSkills = original.skills || []
-  const modSkills = modified.skills || []
-  out.skills = modSkills.length >= origSkills.length ? modSkills : [...origSkills]
-  const origExp = original.experience || []
-  const modExp = modified.experience || []
-  out.experience = modExp.length >= origExp.length ? modExp : origExp.map((e, i) => ({ ...e, ...(modExp[i] || {}) }))
-  const origEdu = original.education || []
-  const modEdu = modified.education || []
-  out.education = modEdu.length >= origEdu.length ? modEdu : origEdu.map((e, i) => ({ ...e, ...(modEdu[i] || {}) }))
-  const origProj = original.projects || []
-  const modProj = modified.projects || []
-  out.projects = modProj.length >= origProj.length ? modProj : origProj.map((e, i) => ({ ...e, ...(modProj[i] || {}) }))
-  return out
-}
-
-/**
- * POST /api/apply-correction
- * Body: { resume, recommendation }
- * Returns modified resume with correction applied
- */
-app.post('/api/apply-correction', async (req, res) => {
-  try {
-    const { resume, recommendation } = req.body
-    if (!resume || !recommendation) {
-      return res.status(400).json({ error: 'resume and recommendation required' })
-    }
-
-    const systemPrompt = `Resume editor. Input: resume JSON + one suggestion. Output: single valid JSON object only—same schema as input (name,email,phone,skills,experience,education,projects). Apply ONLY that suggestion to that section; keep everything else identical. Never drop entries.`
-
-    const resumeCompact = compactJson(truncateStringsDeep(resume, RESUME_LLM_MAX_STR))
-    const userPrompt = `Resume:${resumeCompact}
-Section: ${recommendation.section}
-Suggestion: ${String(recommendation.suggestion || '').slice(0, 2500)}
-Return full resume JSON only.`
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ]
-    const { content: raw } = await groqComplete(messages, TOKENS_APPLY_CORRECTION, GROQ_MODEL_HEAVY, 0.25, {
-      stripPartialTail: false,
-    })
-    let modified = resume
-    if (raw) {
-      try {
-        const jsonMatch = raw.match(/\{[\s\S]*\}/)
-        if (jsonMatch) {
-          modified = JSON.parse(jsonMatch[0])
-          modified = mergeResumePreservingOriginal(resume, modified)
-        }
-      } catch {
-        modified = resume
-      }
-    }
-    res.json({ resume: modified })
-  } catch (err) {
-    console.error('apply-correction error:', err)
-    res.status(500).json({ error: err.message || 'Failed to apply correction' })
   }
 })
 
@@ -1155,7 +1344,7 @@ app.listen(PORT, HOST, () => {
   console.log(JSON.stringify(listenLog))
   console.log(`[email] New-user/payment alerts → ${ADMIN_NOTIFY_EMAIL} (override with ADMIN_NOTIFY_EMAIL)`)
   if (groq) {
-    console.log(`[groq] Models: default=${GROQ_MODEL} apply-correction=${GROQ_MODEL_HEAVY} (set GROQ_MODEL / GROQ_MODEL_HEAVY to override)`)
+    console.log(`[groq] Model: default=${GROQ_MODEL} (set GROQ_MODEL to override)`)
   } else {
     console.warn('Warning: API key not set. AI features will return errors.')
   }

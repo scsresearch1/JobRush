@@ -24,11 +24,11 @@ const DemoModal = ({ isOpen, onClose }) => {
     {
       title: "AI Resume Improvements",
       icon: <ChartBarIcon className="w-16 h-16" />,
-      description: "Get targeted suggestions and apply corrections with one click",
+      description: "Get high-quality, ATS-focused recommendations you can apply quickly",
       features: [
         "Keyword matching analysis",
         "Formatting & skill alignment",
-        "One-click auto-correction",
+        "Actionable section-by-section recommendations",
         "Scientific score breakdown"
       ],
       color: "from-purple-500 to-pink-500"
