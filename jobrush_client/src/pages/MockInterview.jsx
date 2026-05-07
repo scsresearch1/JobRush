@@ -1,17 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { parseResumeFromPdf } from '@prolaxu/open-resume-pdf-parser'
-import * as pdfjsLib from 'pdfjs-dist'
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { transformParsedResume } from '../utils/resumeParserTransform.js'
 import { generateInterviewQuestions } from '../utils/mockInterviewQuestions.js'
+import { readStoredParsedResume } from '../utils/parsedResumeStorage.js'
 import {
   ArrowLeftIcon,
   VideoCameraIcon,
   PlayIcon,
   DocumentArrowUpIcon,
   CheckCircleIcon,
-  XMarkIcon,
   SparklesIcon,
   SpeakerWaveIcon,
   ComputerDesktopIcon,
@@ -24,21 +20,11 @@ import { USERDB_FIELDS } from '../config/databaseSchema.js'
 import { QUOTA_MOCK_MAX } from '../utils/quotas.js'
 import { isMobileUserAgent } from '../utils/mobileBrowser.js'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
-
-const ACCEPTED_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-const isAcceptedFile = (f) =>
-  ACCEPTED_TYPES.includes(f.type) || f.name?.toLowerCase().endsWith('.pdf') || f.name?.toLowerCase().endsWith('.docx')
-
 const MockInterview = () => {
   const isMobileDevice = isMobileUserAgent()
   const [stage, setStage] = useState('intake') // 'intake' | 'questions' | 'interview' | 'analysis'
-  const [file, setFile] = useState(null)
-  const [isDragging, setIsDragging] = useState(false)
-  const [isParsing, setIsParsing] = useState(false)
   const [resume, setResume] = useState(null)
   const [questions, setQuestions] = useState([])
-  const [parseError, setParseError] = useState('')
   const [mockQuotaExceeded, setMockQuotaExceeded] = useState(false)
 
   const [isRecording, setIsRecording] = useState(false)
@@ -56,19 +42,12 @@ const MockInterview = () => {
   const stopVideoAnalysisRef = useRef(null)
   const frameMetricsRef = useRef([])
 
-  // Load existing resume from localStorage on mount
+  // Same parsed resume as ATS Analysis — set once on Resume Upload (no second parse here).
   useEffect(() => {
-    const stored = localStorage.getItem('jobRush_parsed_resume')
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored)
-        if (parsed && (parsed.name || parsed.skills?.length || parsed.experience?.length)) {
-          setResume(parsed)
-          setQuestions(generateInterviewQuestions(parsed))
-        }
-      } catch {
-        // ignore
-      }
+    const parsed = readStoredParsedResume()
+    if (parsed) {
+      setResume(parsed)
+      setQuestions(generateInterviewQuestions(parsed))
     }
   }, [])
 
@@ -92,84 +71,6 @@ const MockInterview = () => {
       cancelled = true
     }
   }, [])
-
-  const handleDragOver = (e) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }
-
-  const handleDragLeave = () => setIsDragging(false)
-
-  const handleDrop = (e) => {
-    e.preventDefault()
-    setIsDragging(false)
-    const droppedFile = e.dataTransfer.files[0]
-    if (!droppedFile) return
-    if (!isAcceptedFile(droppedFile)) {
-      setParseError('Please upload a PDF or DOCX file')
-      return
-    }
-    if (droppedFile.size > 5 * 1024 * 1024) {
-      setParseError('File size must be under 5 MB')
-      return
-    }
-    setFile(droppedFile)
-    setParseError('')
-  }
-
-  const handleFileSelect = (e) => {
-    const selectedFile = e.target.files[0]
-    if (selectedFile) {
-      if (!isAcceptedFile(selectedFile)) {
-        setParseError('Please upload a PDF or DOCX file')
-        return
-      }
-      if (selectedFile.size > 5 * 1024 * 1024) {
-        setParseError('File size must be under 5 MB')
-        return
-      }
-      setFile(selectedFile)
-      setParseError('')
-    }
-  }
-
-  const handleParse = async () => {
-    if (!file) return
-    setIsParsing(true)
-    setParseError('')
-
-    const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf')
-    let objectUrl = null
-
-    try {
-      let parsed
-      if (isPdf) {
-        objectUrl = URL.createObjectURL(file)
-        const raw = await parseResumeFromPdf(objectUrl)
-        parsed = transformParsedResume(raw)
-      } else {
-        const arrayBuffer = await file.arrayBuffer()
-        const { parseDocxResume } = await import('../utils/docxResumeParser.js')
-        parsed = await parseDocxResume(arrayBuffer)
-      }
-
-      if (!parsed || (!parsed.name && !parsed.email && parsed.skills?.length === 0 && parsed.experience?.length === 0)) {
-        setParseError('Could not extract meaningful data. Ensure the file is text-based (not scanned).')
-        return
-      }
-
-      const generated = generateInterviewQuestions(parsed)
-      setResume(parsed)
-      setQuestions(generated)
-      setStage('questions')
-    } catch (err) {
-      console.error('Parse error:', err)
-      setParseError('Failed to parse resume. Please try a different file.')
-    } finally {
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-      setIsParsing(false)
-    }
-  }
 
   const useExistingResume = () => {
     if (resume) {
@@ -425,13 +326,17 @@ const MockInterview = () => {
           Simulate interview sessions with HR-style questions. Record your video responses (video only, 60 sec per question) for analysis.
         </p>
 
-        {/* Stage 1: Resume Intake and Question Generation */}
+        {/* Stage 1: Uses parsed resume from Resume Upload (single parse for ATS + mock interview) */}
         {stage === 'intake' && (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Stage 1 — Resume Intake</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Stage 1 — Your resume</h3>
               <p className="text-gray-600 mb-4">
-                Upload your resume. It will be parsed locally in your browser. We'll generate 5 personalized interview questions based on your profile.
+                Your resume is parsed once on{' '}
+                <Link to="/resume-upload" className="text-primary-600 font-medium hover:underline">
+                  Resume Upload
+                </Link>
+                . Those details power ATS scoring here and your personalized questions—until you upload and parse a new file.
               </p>
             </div>
 
@@ -439,75 +344,43 @@ const MockInterview = () => {
               <div className="p-6 bg-green-50 border border-green-200 rounded-xl">
                 <div className="flex items-center gap-2 mb-2">
                   <CheckCircleIcon className="w-6 h-6 text-green-600" />
-                  <span className="font-semibold text-green-800">Resume loaded</span>
+                  <span className="font-semibold text-green-800">Resume ready</span>
                 </div>
                 <p className="text-gray-700 text-sm mb-4">
                   {resume.name || 'Candidate'} • {(resume.skills || []).length} skills • {(resume.experience || []).length} experiences
                 </p>
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
                   <button
+                    type="button"
                     onClick={useExistingResume}
                     className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700"
                   >
                     <SparklesIcon className="w-5 h-5" />
-                    View Generated Questions
+                    View generated questions
                   </button>
-                  <p className="text-gray-500 text-sm self-center">or upload a new resume below</p>
+                  <Link
+                    to="/resume-upload"
+                    className="text-sm text-primary-600 font-medium hover:underline"
+                  >
+                    Replace resume (upload & parse again)
+                  </Link>
                 </div>
               </div>
-            ) : null}
-
-            <div
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-xl p-8 text-center transition ${
-                isDragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-primary-400'
-              }`}
-            >
-              <input
-                type="file"
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={handleFileSelect}
-                className="hidden"
-                id="mock-resume-upload"
-              />
-              <label htmlFor="mock-resume-upload" className="cursor-pointer block">
-                <DocumentArrowUpIcon className="w-12 h-12 mx-auto mb-3 text-primary-500" />
-                <p className="font-medium text-gray-700">
-                  {file ? file.name : 'Drag and drop your resume here or click to browse'}
+            ) : (
+              <div className="p-6 bg-amber-50 border border-amber-200 rounded-xl">
+                <p className="text-gray-800 font-medium mb-2">No parsed resume yet</p>
+                <p className="text-gray-600 text-sm mb-4">
+                  Upload a PDF or DOCX on Resume Upload and tap Parse Resume. After that, return here—your profile will load automatically.
                 </p>
-                <p className="text-sm text-gray-500 mt-1">PDF or DOCX, max 5 MB</p>
-              </label>
-              {file && (
-                <div className="mt-4 flex justify-center gap-2">
-                  <button
-                    onClick={handleParse}
-                    disabled={isParsing}
-                    className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50"
-                  >
-                    {isParsing ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Parsing...
-                      </>
-                    ) : (
-                      <>
-                        <SparklesIcon className="w-5 h-5" />
-                        Parse & Generate Questions
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => { setFile(null); setParseError('') }}
-                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    <XMarkIcon className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
-            </div>
-            {parseError && <p className="text-red-600 text-sm">{parseError}</p>}
+                <Link
+                  to="/resume-upload"
+                  className="inline-flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700"
+                >
+                  <DocumentArrowUpIcon className="w-5 h-5" />
+                  Go to Resume Upload
+                </Link>
+              </div>
+            )}
           </div>
         )}
 

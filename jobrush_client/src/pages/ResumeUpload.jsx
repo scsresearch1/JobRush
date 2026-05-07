@@ -4,6 +4,11 @@ import { parseResumeFromPdf } from '@prolaxu/open-resume-pdf-parser'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { transformParsedResume } from '../utils/resumeParserTransform.js'
+import {
+  readStoredParsedResume,
+  writeStoredParsedResume,
+  clearStoredParsedResume,
+} from '../utils/parsedResumeStorage.js'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 import {
@@ -33,17 +38,8 @@ const ResumeUpload = () => {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
 
   useEffect(() => {
-    const stored = localStorage.getItem('jobRush_parsed_resume')
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored)
-        if (parsed && (parsed.name || parsed.skills?.length || parsed.experience?.length)) {
-          setParsedData(parsed)
-        }
-      } catch {
-        // ignore invalid stored data
-      }
-    }
+    const parsed = readStoredParsedResume()
+    if (parsed) setParsedData(parsed)
   }, [])
 
   const handleDragOver = (e) => {
@@ -119,7 +115,7 @@ const ResumeUpload = () => {
       }
 
       setParsedData(parsed)
-      localStorage.setItem('jobRush_parsed_resume', JSON.stringify(parsed))
+      writeStoredParsedResume(parsed)
     } catch (err) {
       console.error('Resume parse error:', err)
       const msg = err?.message || ''
@@ -138,8 +134,9 @@ const ResumeUpload = () => {
 
   const handleClear = () => {
     setFile(null)
-    setParsedData(null)
     setError('')
+    if (parsedData) clearStoredParsedResume()
+    setParsedData(null)
   }
 
   return (

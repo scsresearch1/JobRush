@@ -9,8 +9,7 @@ import {
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline'
 import { generateSOP, generateCoverLetter } from '../services/groqService.js'
-
-const STORAGE_KEY = 'jobRush_parsed_resume'
+import { readStoredParsedResume } from '../utils/parsedResumeStorage.js'
 
 const SOPCoverLetter = () => {
   const [type, setType] = useState('cover-letter')
@@ -23,17 +22,8 @@ const SOPCoverLetter = () => {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored)
-        if (parsed && (parsed.name || parsed.skills?.length || parsed.experience?.length)) {
-          setResume(parsed)
-        }
-      } catch {
-        // ignore
-      }
-    }
+    const parsed = readStoredParsedResume()
+    if (parsed) setResume(parsed)
   }, [])
 
   const handleGenerate = async () => {

@@ -11,6 +11,7 @@ import AcceptabilityPreview from '../components/AcceptabilityPreview.jsx'
 import { getRecommendations, pingHealth } from '../services/groqService.js'
 import { evaluateResume } from '../ats/index.js'
 import { getDisplayLines } from '../utils/cleanAiText.js'
+import { readStoredParsedResume } from '../utils/parsedResumeStorage.js'
 
 const FALLBACK_RECOMMENDATIONS = [
   { section: 'Skills', current: 'Review your skills section', suggestion: 'Add ATS-targeted keywords from job descriptions', impact: 'High' },
@@ -19,7 +20,6 @@ const FALLBACK_RECOMMENDATIONS = [
   { section: 'Keywords', current: 'Missing common terms', suggestion: 'Incorporate Agile, CI/CD, or role-specific keywords', impact: 'High' },
 ]
 
-const STORAGE_KEY = 'jobRush_parsed_resume'
 const RECOMMENDATION_COOLDOWN_MS = 45000
 
 const ResumeImprovements = () => {
@@ -50,8 +50,7 @@ const ResumeImprovements = () => {
   const fetchRecommendations = React.useCallback(async () => {
     const now = Date.now()
     if (cooldownUntil > now) return
-    const stored = localStorage.getItem(STORAGE_KEY)
-    const parsed = stored ? JSON.parse(stored) : null
+    const parsed = readStoredParsedResume()
     if (!parsed) return
     setResume(parsed)
     setLoading(true)

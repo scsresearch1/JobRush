@@ -39,7 +39,7 @@ import {
 import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
 import { getUser } from '../services/database.js'
 import { USERDB_FIELDS } from '../config/databaseSchema.js'
-import { QUOTA_ATS_MAX } from '../utils/quotas.js'
+import { readStoredParsedResume } from '../utils/parsedResumeStorage.js'
 
 const massHiringCompanyRows = MASS_HIRING_PROFILES.map((p) => ({
   company: p.entity,
@@ -80,8 +80,7 @@ const ATSAnalysis = () => {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const stored = localStorage.getItem('jobRush_parsed_resume')
-      const parsed = stored ? JSON.parse(stored) : null
+      const parsed = readStoredParsedResume()
       let uid
       try {
         uid = JSON.parse(localStorage.getItem('jobRush_user') || '{}').uniqueId
