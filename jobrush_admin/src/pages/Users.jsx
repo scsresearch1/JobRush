@@ -79,6 +79,13 @@ function deriveStatus(row) {
   if (row[USERDB_FIELDS.SUSPENDED] === true) {
     return { key: 'suspended', label: 'Suspended', tone: 'text-red-300 bg-red-950/40 ring-red-800/50' }
   }
+  if (row[USERDB_FIELDS.IS_SUPER_ADMIN] === true) {
+    return {
+      key: 'super_admin',
+      label: 'Super Admin',
+      tone: 'text-violet-200 bg-violet-950/35 ring-violet-800/40',
+    }
+  }
   const a = row[USERDB_FIELDS.ACCESS_STATUS]
   if (a === 'suspended') {
     return { key: 'suspended', label: 'Suspended', tone: 'text-red-300 bg-red-950/40 ring-red-800/50' }
@@ -396,6 +403,7 @@ export default function Users() {
           >
             <option value="all">All statuses</option>
             <option value="active">Active</option>
+            <option value="super_admin">Super Admin</option>
             <option value="payment_pending">Payment pending</option>
             <option value="awaiting_verification">Awaiting verification</option>
             <option value="suspended">Suspended</option>
@@ -449,8 +457,11 @@ export default function Users() {
                   const email = r[USERDB_FIELDS.EMAIL_ID] || '—'
                   const ts = formatTimestampIST(r[USERDB_FIELDS.TIMESTAMP])
                   const st = deriveStatus(r)
-                  const ats = Math.min(QUOTA_ATS, Number(r[USERDB_FIELDS.ATS_CHECKS_USED]) || 0)
-                  const mock = Math.min(QUOTA_MOCK, Number(r[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0)
+                  const isSuperAdmin = r[USERDB_FIELDS.IS_SUPER_ADMIN] === true
+                  const atsRaw = Number(r[USERDB_FIELDS.ATS_CHECKS_USED]) || 0
+                  const mockRaw = Number(r[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0
+                  const ats = isSuperAdmin ? atsRaw : Math.min(QUOTA_ATS, atsRaw)
+                  const mock = isSuperAdmin ? mockRaw : Math.min(QUOTA_MOCK, mockRaw)
                   const canReviewPayment = r[USERDB_FIELDS.ACCESS_STATUS] === 'awaiting_activation'
                   const canSendPaymentReminder = st.key === 'payment_pending' && email.includes('@')
                   const isBusy = busyId === uid
@@ -472,8 +483,17 @@ export default function Users() {
                         </span>
                       </td>
                       <td className="py-3 px-3 text-admin-200 text-xs leading-relaxed">
-                        <div>ATS {ats}/{QUOTA_ATS}</div>
-                        <div>Mock {mock}/{QUOTA_MOCK}</div>
+                        {isSuperAdmin ? (
+                          <>
+                            <div>ATS {ats} / unlimited</div>
+                            <div>Mock {mock} / unlimited</div>
+                          </>
+                        ) : (
+                          <>
+                            <div>ATS {ats}/{QUOTA_ATS}</div>
+                            <div>Mock {mock}/{QUOTA_MOCK}</div>
+                          </>
+                        )}
                       </td>
                       <td className="py-3 px-3">
                         <div className="flex flex-col sm:flex-row sm:justify-end gap-2 items-stretch sm:items-center">
