@@ -84,6 +84,7 @@ const ATSAnalysis = () => {
     ;(async () => {
       const parsed = readStoredParsedResume()
       let localUser = {}
+      let uid
       try {
         localUser = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
         uid = localUser.uniqueId
