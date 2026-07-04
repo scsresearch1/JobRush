@@ -40,6 +40,8 @@ import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
 import { getUser } from '../services/database.js'
 import { USERDB_FIELDS } from '../config/databaseSchema.js'
 import { readStoredParsedResume } from '../utils/parsedResumeStorage.js'
+import { QUOTA_ATS_MAX } from '../utils/quotas.js'
+import { hasUnlimitedQuota } from '../utils/superAdmin.js'
 
 const massHiringCompanyRows = MASS_HIRING_PROFILES.map((p) => ({
   company: p.entity,
@@ -81,13 +83,14 @@ const ATSAnalysis = () => {
     let cancelled = false
     ;(async () => {
       const parsed = readStoredParsedResume()
-      let uid
+      let localUser = {}
       try {
-        uid = JSON.parse(localStorage.getItem('jobRush_user') || '{}').uniqueId
+        localUser = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
+        uid = localUser.uniqueId
       } catch {
         uid = null
       }
-      if (uid && !String(uid).startsWith('local_')) {
+      if (uid && !String(uid).startsWith('local_') && !hasUnlimitedQuota(localUser)) {
         try {
           const data = await getUser(uid)
           const used = Number(data?.[USERDB_FIELDS.ATS_CHECKS_USED]) || 0

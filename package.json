@@ -23,7 +23,9 @@
     "dev:full": "concurrently \"npm run server\" \"npm run dev -w jobrush_client\"",
     "admin:dev": "npm run dev -w jobrush_admin",
     "admin:build": "npm run build -w jobrush_admin",
-    "firebase:create-collections": "node scripts/create-firebase-collections.js"
+    "firebase:create-collections": "node scripts/create-firebase-collections.js",
+    "firebase:create-super-admin": "node scripts/create-super-admin.js",
+    "firebase:create-super-admin:insecure": "node scripts/create-super-admin-insecure.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

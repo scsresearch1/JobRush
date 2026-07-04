@@ -68,6 +68,10 @@ export const USERDB_FIELDS = {
   ATS_CHECKS_USED: 'atsChecksUsed',
   /** Count of mock interview reports saved (max 5) */
   MOCK_INTERVIEWS_USED: 'mockInterviewsUsed',
+  /** When true, user bypasses payment and usage quotas */
+  IS_SUPER_ADMIN: 'isSuperAdmin',
+  /** Login password for super admin accounts (stored in Firebase RTDB) */
+  PASSWORD: 'password',
 }
 
 export const USERDB_SCHEMA = {
@@ -84,6 +88,8 @@ export const USERDB_SCHEMA = {
     USERDB_FIELDS.SUSPENDED,
     USERDB_FIELDS.ATS_CHECKS_USED,
     USERDB_FIELDS.MOCK_INTERVIEWS_USED,
+    USERDB_FIELDS.IS_SUPER_ADMIN,
+    USERDB_FIELDS.PASSWORD,
   ],
   description: 'User collection; optional access and presence fields synced from the app for admin reporting',
 }

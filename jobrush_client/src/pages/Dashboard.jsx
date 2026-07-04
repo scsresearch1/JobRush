@@ -10,12 +10,15 @@ import {
 } from '@heroicons/react/24/outline'
 import { MASS_HIRING_PROFILES } from '../ats/config/companyProfiles.js'
 import { QUOTA_ATS_MAX, QUOTA_MOCK_MAX } from '../utils/quotas.js'
+import { hasUnlimitedQuota } from '../utils/superAdmin.js'
 
 const Dashboard = ({ onQuotaReached }) => {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
   const atsUsed = Number(user?.atsChecksUsed) || 0
   const mockUsed = Number(user?.mockInterviewsUsed) || 0
-  const quotaLocked = atsUsed >= QUOTA_ATS_MAX || mockUsed >= QUOTA_MOCK_MAX || user?.accessStatus === 'suspended'
+  const quotaLocked =
+    !hasUnlimitedQuota(user) &&
+    (atsUsed >= QUOTA_ATS_MAX || mockUsed >= QUOTA_MOCK_MAX || user?.accessStatus === 'suspended')
 
   const features = [
     {

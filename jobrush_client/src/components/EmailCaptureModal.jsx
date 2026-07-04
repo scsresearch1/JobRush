@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { XMarkIcon, EnvelopeIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
+import { XMarkIcon, EnvelopeIcon, ArrowRightIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import { saveUser, getUserByEmail, touchUserLastSeen } from '../services/database'
 import { USERDB_FIELDS } from '../config/databaseSchema'
 import { getISTTimestamp } from '../utils/timestamp.js'
@@ -7,8 +7,35 @@ import { mapFirebaseUserToLocal, computePostEmailFlow } from '../utils/journeySt
 
 const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [needsPassword, setNeedsPassword] = useState(false)
+  const [pendingSuperAdmin, setPendingSuperAdmin] = useState(null)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+
+  const resetForm = () => {
+    setEmail('')
+    setPassword('')
+    setNeedsPassword(false)
+    setPendingSuperAdmin(null)
+    setError('')
+  }
+
+  const completeLogin = async (uniqueId, data) => {
+    try {
+      await touchUserLastSeen(uniqueId)
+    } catch {
+      /* non-fatal */
+    }
+    const userData = {
+      ...mapFirebaseUserToLocal(data, uniqueId, {}),
+      loginTime: getISTTimestamp(),
+    }
+    localStorage.setItem('jobRush_user', JSON.stringify(userData))
+    onSuccess({ user: userData, flow: computePostEmailFlow(data) })
+    resetForm()
+    onClose()
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -27,12 +54,29 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
     setIsLoading(true)
 
     try {
+      if (needsPassword && pendingSuperAdmin) {
+        if (!password) {
+          setError('Password is required for this account.')
+          setIsLoading(false)
+          return
+        }
+        const stored = String(pendingSuperAdmin.data[USERDB_FIELDS.PASSWORD] || '')
+        if (password !== stored) {
+          setError('Invalid password. Please try again.')
+          setIsLoading(false)
+          return
+        }
+        await completeLogin(pendingSuperAdmin.uniqueId, pendingSuperAdmin.data)
+        setIsLoading(false)
+        return
+      }
+
       let existing = null
       try {
         existing = await getUserByEmail(normalizedEmail)
       } catch (lookupErr) {
         console.error('Firebase lookup failed:', lookupErr)
-          setError('We could not connect to our user database. Please try again in a moment.')
+        setError('We could not connect to our user database. Please try again in a moment.')
         setIsLoading(false)
         return
       }
@@ -45,18 +89,13 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
           setIsLoading(false)
           return
         }
-        try {
-          await touchUserLastSeen(uniqueId)
-        } catch {
-          /* non-fatal */
+        if (data[USERDB_FIELDS.IS_SUPER_ADMIN] === true) {
+          setNeedsPassword(true)
+          setPendingSuperAdmin(existing)
+          setIsLoading(false)
+          return
         }
-        const userData = {
-          ...mapFirebaseUserToLocal(data, uniqueId, {}),
-          loginTime: getISTTimestamp(),
-        }
-        localStorage.setItem('jobRush_user', JSON.stringify(userData))
-        onSuccess({ user: userData, flow })
-        onClose()
+        await completeLogin(uniqueId, data)
         setIsLoading(false)
         return
       }
@@ -84,6 +123,7 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
       }
       localStorage.setItem('jobRush_user', JSON.stringify(userData))
       onSuccess({ user: userData, flow: { kind: 'payment_offer' } })
+      resetForm()
       onClose()
     } catch (err) {
       console.error(err)
@@ -111,11 +151,19 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
           </button>
           <div className="flex items-center gap-3 mb-4">
             <div className="w-14 h-14 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center">
-              <EnvelopeIcon className="w-8 h-8 text-white" />
+              {needsPassword ? (
+                <LockClosedIcon className="w-8 h-8 text-white" />
+              ) : (
+                <EnvelopeIcon className="w-8 h-8 text-white" />
+              )}
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-white">Start Your Journey</h2>
-              <p className="text-primary-100 text-sm">Enter your email to get started</p>
+              <h2 className="text-2xl font-bold text-white">
+                {needsPassword ? 'Super Admin Sign In' : 'Start Your Journey'}
+              </h2>
+              <p className="text-primary-100 text-sm">
+                {needsPassword ? 'Enter your password to continue' : 'Enter your email to get started'}
+              </p>
             </div>
           </div>
         </div>
@@ -135,11 +183,34 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
                 }}
                 placeholder="your.email@example.com"
                 className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition outline-none"
-                disabled={isLoading}
+                disabled={isLoading || needsPassword}
               />
             </div>
-            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+            {error && !needsPassword && <p className="mt-2 text-sm text-red-600">{error}</p>}
           </div>
+          {needsPassword && (
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <LockClosedIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    setError('')
+                  }}
+                  placeholder="Enter your password"
+                  className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition outline-none"
+                  disabled={isLoading}
+                  autoFocus
+                />
+              </div>
+              {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+            </div>
+          )}
           <button
             type="submit"
             disabled={isLoading}
@@ -152,11 +223,25 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
               </>
             ) : (
               <>
-                <span>Continue</span>
+                <span>{needsPassword ? 'Sign In' : 'Continue'}</span>
                 <ArrowRightIcon className="w-5 h-5" />
               </>
             )}
           </button>
+          {needsPassword && (
+            <button
+              type="button"
+              onClick={() => {
+                setNeedsPassword(false)
+                setPendingSuperAdmin(null)
+                setPassword('')
+                setError('')
+              }}
+              className="w-full mt-3 text-sm text-gray-500 hover:text-gray-700 transition"
+            >
+              Use a different email
+            </button>
+          )}
         </form>
       </div>
     </div>

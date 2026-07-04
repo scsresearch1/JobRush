@@ -58,6 +58,8 @@ export const USERDB_FIELDS = {
   SUSPENDED: 'suspended',
   ATS_CHECKS_USED: 'atsChecksUsed',
   MOCK_INTERVIEWS_USED: 'mockInterviewsUsed',
+  IS_SUPER_ADMIN: 'isSuperAdmin',
+  PASSWORD: 'password',
 }
 
 export const INTERVIEW_REPORTS_FIELDS = {

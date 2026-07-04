@@ -48,6 +48,8 @@ const COLLECTION_STRUCTURE = {
       'suspended',
       'atsChecksUsed',
       'mockInterviewsUsed',
+      'isSuperAdmin',
+      'password',
     ],
     seedDocuments: [], // Empty - node created with schema only
   },

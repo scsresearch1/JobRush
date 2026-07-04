@@ -38,6 +38,13 @@ function isFirebaseBackedUserId(uniqueId) {
   return Boolean(uniqueId) && !String(uniqueId).startsWith('local_')
 }
 
+async function userHasUnlimitedQuota(uniqueId) {
+  if (!isFirebaseBackedUserId(uniqueId)) return false
+  const snapshot = await get(userRef(uniqueId))
+  if (!snapshot.exists()) return false
+  return snapshot.val()[USERDB_FIELDS.IS_SUPER_ADMIN] === true
+}
+
 /**
  * @param {Record<string, unknown>} [extra] — optional fields merged into the user node (e.g. accessStatus, lastSeenAt)
  */
@@ -74,22 +81,24 @@ export async function touchUserLastSeen(uniqueId) {
 
 export async function incrementAtsCheckUsage(uniqueId) {
   if (!isFirebaseBackedUserId(uniqueId)) return
+  const unlimited = await userHasUnlimitedQuota(uniqueId)
   const snapshot = await get(userRef(uniqueId))
   const prev = snapshot.exists() ? snapshot.val() : {}
   const cur = Number(prev[USERDB_FIELDS.ATS_CHECKS_USED]) || 0
-  const next = Math.min(QUOTA_ATS_MAX, cur + 1)
+  const next = unlimited ? cur + 1 : Math.min(QUOTA_ATS_MAX, cur + 1)
   await update(userRef(uniqueId), { [USERDB_FIELDS.ATS_CHECKS_USED]: next })
-  await syncQuotaSuspendedStatus(uniqueId)
+  if (!unlimited) await syncQuotaSuspendedStatus(uniqueId)
 }
 
 export async function incrementMockInterviewUsage(uniqueId) {
   if (!isFirebaseBackedUserId(uniqueId)) return
+  const unlimited = await userHasUnlimitedQuota(uniqueId)
   const snapshot = await get(userRef(uniqueId))
   const prev = snapshot.exists() ? snapshot.val() : {}
   const cur = Number(prev[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0
-  const next = Math.min(QUOTA_MOCK_MAX, cur + 1)
+  const next = unlimited ? cur + 1 : Math.min(QUOTA_MOCK_MAX, cur + 1)
   await update(userRef(uniqueId), { [USERDB_FIELDS.MOCK_INTERVIEWS_USED]: next })
-  await syncQuotaSuspendedStatus(uniqueId)
+  if (!unlimited) await syncQuotaSuspendedStatus(uniqueId)
 }
 
 /**
@@ -98,6 +107,7 @@ export async function incrementMockInterviewUsage(uniqueId) {
  */
 export async function syncQuotaSuspendedStatus(uniqueId) {
   if (!isFirebaseBackedUserId(uniqueId)) return false
+  if (await userHasUnlimitedQuota(uniqueId)) return false
   const snapshot = await get(userRef(uniqueId))
   const prev = snapshot.exists() ? snapshot.val() : {}
   const ats = Number(prev[USERDB_FIELDS.ATS_CHECKS_USED]) || 0

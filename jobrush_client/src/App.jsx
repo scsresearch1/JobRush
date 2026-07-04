@@ -23,6 +23,7 @@ import { hasAppAccess } from './utils/access.js'
 import { getUser, syncUserFieldsToFirebase } from './services/database.js'
 import { mapFirebaseUserToLocal, computeStartJourneyFlow } from './utils/journeyState.js'
 import { QUOTA_ATS_MAX, QUOTA_MOCK_MAX } from './utils/quotas.js'
+import { hasUnlimitedQuota } from './utils/superAdmin.js'
 
 function ProtectedRoute({ children }) {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
@@ -34,6 +35,7 @@ function ProtectedRoute({ children }) {
 
 function isQuotaLockedUser(user) {
   if (!user || typeof user !== 'object') return false
+  if (hasUnlimitedQuota(user)) return false
   const ats = Number(user.atsChecksUsed) || 0
   const mock = Number(user.mockInterviewsUsed) || 0
   return user.accessStatus === 'suspended' || ats >= QUOTA_ATS_MAX || mock >= QUOTA_MOCK_MAX
@@ -69,9 +71,17 @@ function App() {
             ...u,
             ...mapFirebaseUserToLocal(data, uid, u),
           }
+          if (hasUnlimitedQuota(merged) && merged.accessStatus === 'suspended') {
+            merged = { ...merged, accessStatus: 'active' }
+            syncUserFieldsToFirebase(uid, { accessStatus: 'active' }).catch(() => {})
+          }
           const ats = Number(merged.atsChecksUsed) || 0
           const mock = Number(merged.mockInterviewsUsed) || 0
-          if (merged.accessStatus === 'active' && (ats >= QUOTA_ATS_MAX || mock >= QUOTA_MOCK_MAX)) {
+          if (
+            !hasUnlimitedQuota(merged) &&
+            merged.accessStatus === 'active' &&
+            (ats >= QUOTA_ATS_MAX || mock >= QUOTA_MOCK_MAX)
+          ) {
             merged = { ...merged, accessStatus: 'suspended' }
             syncUserFieldsToFirebase(uid, { accessStatus: 'suspended' }).catch(() => {})
           }
@@ -114,9 +124,17 @@ function App() {
         const data = await getUser(uid)
         if (data) {
           let merged = { ...user, ...mapFirebaseUserToLocal(data, uid, user) }
+          if (hasUnlimitedQuota(merged) && merged.accessStatus === 'suspended') {
+            merged = { ...merged, accessStatus: 'active' }
+            syncUserFieldsToFirebase(uid, { accessStatus: 'active' }).catch(() => {})
+          }
           const ats = Number(merged.atsChecksUsed) || 0
           const mock = Number(merged.mockInterviewsUsed) || 0
-          if (merged.accessStatus === 'active' && (ats >= QUOTA_ATS_MAX || mock >= QUOTA_MOCK_MAX)) {
+          if (
+            !hasUnlimitedQuota(merged) &&
+            merged.accessStatus === 'active' &&
+            (ats >= QUOTA_ATS_MAX || mock >= QUOTA_MOCK_MAX)
+          ) {
             merged = { ...merged, accessStatus: 'suspended' }
             syncUserFieldsToFirebase(uid, { accessStatus: 'suspended' }).catch(() => {})
           }

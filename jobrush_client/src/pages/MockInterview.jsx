@@ -18,6 +18,7 @@ import BehavioralReport from '../components/BehavioralReport.jsx'
 import { getUser } from '../services/database.js'
 import { USERDB_FIELDS } from '../config/databaseSchema.js'
 import { QUOTA_MOCK_MAX } from '../utils/quotas.js'
+import { hasUnlimitedQuota } from '../utils/superAdmin.js'
 import { isMobileUserAgent } from '../utils/mobileBrowser.js'
 
 const MockInterview = () => {
@@ -53,13 +54,15 @@ const MockInterview = () => {
 
   useEffect(() => {
     let cancelled = false
+    let localUser = {}
     let uid
     try {
-      uid = JSON.parse(localStorage.getItem('jobRush_user') || '{}').uniqueId
+      localUser = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
+      uid = localUser.uniqueId
     } catch {
       uid = null
     }
-    if (!uid || String(uid).startsWith('local_')) return undefined
+    if (!uid || String(uid).startsWith('local_') || hasUnlimitedQuota(localUser)) return undefined
     getUser(uid)
       .then((d) => {
         if (cancelled) return
