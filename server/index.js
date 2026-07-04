@@ -90,7 +90,7 @@ const MAX_CHAT_MSG_CHARS = 8000
 /** Groq completion ceiling for this app (avoid mid-stream cuts; models typically allow ≤ 8k). */
 const GROQ_MAX_COMPLETION_TOKENS = 8192
 const TOKENS_EXPLAIN_ATS = 2048
-const TOKENS_RECOMMENDATIONS = 2048
+const TOKENS_RECOMMENDATIONS = 4096
 const TOKENS_SOP = 2048
 const TOKENS_COVER_LETTER = 2048
 const TOKENS_INTERVIEW_TIPS = 2048
@@ -389,6 +389,79 @@ function collectLowScoreEntities(scores, limit = 5) {
     .map((s) => `${s.entity} (${s.score}%)`)
 }
 
+function extractBullets(entry, max = 6) {
+  if (Array.isArray(entry?.responsibilities)) {
+    return entry.responsibilities.map((b) => String(b).trim()).filter(Boolean).slice(0, max)
+  }
+  if (Array.isArray(entry?.highlights)) {
+    return entry.highlights.map((b) => String(b).trim()).filter(Boolean).slice(0, max)
+  }
+  const desc = String(entry?.description || '').trim()
+  if (!desc) return []
+  return desc
+    .split(/\n|•|·|;/)
+    .map((l) => l.replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, max)
+}
+
+function buildResumeDeepContext(resume, evaluation) {
+  const experienceLines = (resume?.experience || []).slice(0, 6).map((e) => {
+    const role = e.role || e.title || 'Role'
+    const company = e.company || 'Company'
+    const duration = e.duration ? ` (${e.duration})` : ''
+    const bullets = extractBullets(e, 5)
+    const bulletBlock = bullets.length
+      ? bullets.map((b) => `    • "${b.slice(0, 220)}"`).join('\n')
+      : '    • (no bullet text parsed — suggest adding quantified bullets)'
+    return `  ${role} @ ${company}${duration}\n${bulletBlock}`
+  })
+
+  const projectLines = (resume?.projects || []).slice(0, 5).map((p) => {
+    const bullets = extractBullets(p, 4)
+    const bulletBlock = bullets.length
+      ? bullets.map((b) => `    • "${b.slice(0, 220)}"`).join('\n')
+      : `    • description: "${String(p.description || '').slice(0, 220)}"`
+    return `  ${p.name || 'Unnamed project'}\n${bulletBlock}`
+  })
+
+  const allScores = evaluation?.scores?.all || []
+  const entityGaps = [...allScores]
+    .sort((a, b) => Number(a?.score || 0) - Number(b?.score || 0))
+    .slice(0, 10)
+    .map((s) => {
+      const missM = (s.missing_mandatory || []).slice(0, 8).map(toTitle).join(', ') || 'none'
+      const missP = (s.missing_preferred || []).slice(0, 5).map(toTitle).join(', ') || 'none'
+      const matchM = (s.matched_mandatory || []).slice(0, 5).map(toTitle).join(', ') || 'none'
+      const b = s.breakdown || {}
+      return `  ${s.entity} — score ${s.score}% | mandatory skills ${Math.round(b.mandatory_skill_score || 0)}% | project relevance ${Math.round((b.project_relevance || 0) * 100)}% | missing mandatory: ${missM} | missing preferred: ${missP} | already matched: ${matchM}`
+    })
+
+  const weakBullets = []
+  for (const e of (resume?.experience || []).slice(0, 4)) {
+    for (const b of extractBullets(e, 2)) {
+      if (b.length < 40 || !/\d|%|increas|reduc|improv|led|built|develop/i.test(b)) {
+        weakBullets.push(`"${b.slice(0, 160)}" (${e.role || e.title} @ ${e.company})`)
+      }
+    }
+  }
+
+  return {
+    experienceBlock: experienceLines.join('\n') || '  (none parsed)',
+    projectBlock: projectLines.join('\n') || '  (none parsed)',
+    entityGapsBlock: entityGaps.join('\n') || '  (no ATS scores)',
+    weakBulletsBlock: weakBullets.slice(0, 6).join('\n  ') || '  (identify weak bullets from experience text)',
+    skillsList: (resume?.skills || []).slice(0, 40).join(', ') || 'None listed',
+    educationBlock:
+      (resume?.education || [])
+        .slice(0, 4)
+        .map((e) => `${e.degree || 'Degree'} @ ${e.institution || 'Institution'}${e.year ? ` (${e.year})` : ''}`)
+        .join('; ') || 'None listed',
+    summary: String(resume?.summary || resume?.objective || '').trim().slice(0, 400) || '(no summary section)',
+    contact: [resume?.name, resume?.email].filter(Boolean).join(' | '),
+  }
+}
+
 function buildDeterministicFallbackRecommendations(resume, evaluation) {
   const scores = evaluation?.scores?.all || []
   const missingSkills = collectMissingSkills(scores)
@@ -396,27 +469,33 @@ function buildDeterministicFallbackRecommendations(resume, evaluation) {
   const roleHints = uniqueStrings((resume?.experience || []).map((e) => e?.role || e?.title), 3)
   const projectHints = uniqueStrings((resume?.projects || []).map((p) => p?.name), 3)
   const firstRole = roleHints[0] || 'Most relevant experience entry'
+  const lowestTarget = collectLowScoreEntities(scores, 1)[0] || 'target employers'
+  const firstExp = (resume?.experience || [])[0]
+  const firstBullets = extractBullets(firstExp, 2)
+  const weakFirstBullet = firstBullets[0] || 'your top experience bullet'
   const firstProject = projectHints[0] || 'Top relevant project'
   const topSkillLine = missingSkills.length
-    ? `Add these high-impact keywords where true: ${missingSkills.slice(0, 6).map(toTitle).join(', ')}.`
-    : 'Add role-specific keywords from the target job description where they are genuinely used.'
+    ? `Your ATS scan shows repeated gaps for: ${missingSkills.slice(0, 6).map(toTitle).join(', ')}. Add only terms you can defend in an interview.`
+    : 'Mirror 4–6 keywords from your target job description into Skills and the first bullet of your most recent role.'
 
   const recs = [
     {
       section: 'Skills',
-      current: 'Skills list may miss ATS-priority keywords.',
-      suggestion: `${topSkillLine} Group skills by category (Languages, Frameworks, Tools) so ATS can parse them faster.`,
-      where: 'Skills section',
-      example: 'Languages: Java, Python, SQL | Frameworks: React, Node.js | Tools: Git, Docker, AWS',
+      current: `Current skills (${(resume?.skills || []).slice(0, 8).join(', ') || 'sparse list'}) may not surface ATS-priority terms for ${lowestTarget}.`,
+      suggestion: `${topSkillLine} Group skills by category (Languages, Frameworks, Cloud/Tools) and place the 6 most role-relevant terms in the first row so parsers read them early.`,
+      where: 'Skills section (top third of resume)',
+      example: 'Languages: Java, Python, SQL | Frameworks: React, Spring Boot | Cloud: AWS (EC2, S3), Docker, GitHub Actions',
+      evidence: (resume?.skills || []).slice(0, 3).join(', ').slice(0, 120),
       impact: 'High',
     },
     {
       section: 'Experience',
-      current: 'Bullets are likely responsibility-heavy and impact-light.',
+      current: `Bullet reads passively or without metrics: "${String(weakFirstBullet).slice(0, 140)}"`,
       suggestion:
-        'Rewrite top 4 bullets using Action + Scope + Result. Include one measurable result per role (%, time saved, revenue, users, latency, defects).',
-      where: `Experience > ${firstRole}`,
-      example: 'Built an automated reporting pipeline in Python that reduced weekly manual effort by 35% for the operations team.',
+        'Rewrite this bullet as Action + Scope + Stack + Result. Lead with a strong verb, name the system or user base, and add one number (%, time saved, revenue, users, latency, defects). This directly lifts project-relevance and mandatory-skill scores.',
+      where: `Experience > ${firstRole}${firstExp?.company ? ` @ ${firstExp.company}` : ''}`,
+      example: `Led migration of ${firstExp?.company || 'core'} reporting jobs to Python + SQL pipelines, cutting manual weekly effort by 35% for a 12-person ops team.`,
+      evidence: String(weakFirstBullet).slice(0, 120),
       impact: 'High',
     },
     {
@@ -498,22 +577,23 @@ function buildCoverageBoosterRecommendations(resume, missingSkills) {
   ]
 }
 
-function shapeRecommendationList(items, fallbackItems, minCount = 6, maxCount = 8) {
+function shapeRecommendationList(items, fallbackItems, minCount = 8, maxCount = 10) {
   const dedupe = new Set()
   const out = []
   const pushUnique = (r) => {
     const section = String(r?.section || '').trim().slice(0, 64)
-    const suggestion = String(r?.suggestion || '').trim().slice(0, 520)
+    const suggestion = String(r?.suggestion || '').trim().slice(0, 900)
     if (!section || !suggestion) return
-    const key = `${section.toLowerCase()}|${suggestion.toLowerCase()}`
+    const key = `${section.toLowerCase()}|${suggestion.toLowerCase().slice(0, 80)}`
     if (dedupe.has(key)) return
     dedupe.add(key)
     out.push({
       section,
-      current: String(r?.current || 'Needs optimization').trim().slice(0, 220),
+      current: String(r?.current || 'Needs optimization').trim().slice(0, 320),
       suggestion,
-      where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 140) || section,
-      example: String(r?.example || '').trim().slice(0, 260),
+      where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 180) || section,
+      example: String(r?.example || '').trim().slice(0, 360),
+      evidence: String(r?.evidence || '').trim().slice(0, 200),
       impact: String(r?.impact || '').trim().toLowerCase() === 'high' ? 'High' : 'Medium',
     })
   }
@@ -527,10 +607,11 @@ function shapeRecommendationList(items, fallbackItems, minCount = 6, maxCount = 
   if (out.length >= minCount) return out.slice(0, maxCount)
   return (fallbackItems || []).slice(0, maxCount).map((r) => ({
     section: String(r?.section || 'General').trim().slice(0, 64),
-    current: String(r?.current || 'Needs optimization').trim().slice(0, 220),
-    suggestion: String(r?.suggestion || 'Improve role relevance and ATS keyword coverage.').trim().slice(0, 520),
-    where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 140) || String(r?.section || 'General'),
-    example: String(r?.example || '').trim().slice(0, 260),
+    current: String(r?.current || 'Needs optimization').trim().slice(0, 320),
+    suggestion: String(r?.suggestion || 'Improve role relevance and ATS keyword coverage.').trim().slice(0, 900),
+    where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 180) || String(r?.section || 'General'),
+    example: String(r?.example || '').trim().slice(0, 360),
+    evidence: String(r?.evidence || '').trim().slice(0, 200),
     impact: String(r?.impact || '').trim().toLowerCase() === 'high' ? 'High' : 'Medium',
   }))
 }
@@ -593,54 +674,58 @@ app.post('/api/recommendations', async (req, res) => {
   try {
     const { resume, evaluation } = req.body
 
-    const systemPrompt = `You are a senior ATS resume strategist.
-Output ONLY valid JSON array of 6-8 objects with exact keys:
-- section
-- current
-- suggestion
-- where
-- example
+    const systemPrompt = `You are a senior technical recruiter and ATS strategist. Analyze the candidate's ACTUAL resume text and ATS gap data below.
+
+Output ONLY a valid JSON array of 8-10 objects with these exact keys:
+- section (Skills|Experience|Projects|Summary|Education|Formatting|ATS Gaps|Keyword Coverage)
+- current (quote or closely paraphrase a real resume line; name the role/project/company)
+- suggestion (3-5 detailed sentences: what to change, why it hurts ATS/hiring for named targets, how to fix)
+- where (exact resume location, e.g. "Experience > Software Engineer @ Infosys, bullet 2")
+- example (copy-paste-ready rewrite using their real names/stacks; include a metric)
+- evidence (verbatim snippet from resume, max 120 chars)
 - impact (High|Medium)
 
 Rules:
-1) Actionable and specific, not generic.
-2) Every suggestion should be implementable in under 10 minutes.
-3) Each suggestion must include measurable or keyword-based impact.
-4) "where" must point to exact resume location (e.g., "Experience > Software Engineer @ ABC").
-5) "example" must be a realistic rewrite line, not placeholder text.
-6) Avoid vague advice like "improve profile" or "add more details."
-7) No markdown, no numbering, no extra keys.`
-    const skills = (resume?.skills || []).slice(0, 35).join(', ')
-    const exp = (resume?.experience || [])
-      .slice(0, 6)
-      .map((e) => `${e.role || e.title}@${e.company}`)
-      .join('; ')
-    const expBullets = (resume?.experience || [])
-      .slice(0, 4)
-      .flatMap((e) => (Array.isArray(e?.responsibilities) ? e.responsibilities.slice(0, 2) : []))
-      .map((b) => String(b || '').trim())
-      .filter(Boolean)
-      .slice(0, 6)
-      .join(' | ')
-    const projectBullets = (resume?.projects || [])
-      .slice(0, 4)
-      .flatMap((p) => (Array.isArray(p?.highlights) ? p.highlights.slice(0, 2) : []))
-      .map((b) => String(b || '').trim())
-      .filter(Boolean)
-      .slice(0, 6)
-      .join(' | ')
+1) Every item must anchor to this candidate's text — never generic "add more details" advice.
+2) Reference at least 4 different low-scoring ATS targets by name across the list.
+3) For weak bullets (short, no numbers, passive voice), quote them in "current" and rewrite in "example".
+4) Map missing mandatory skills from ATS data into specific Skills or Experience edits.
+5) No markdown, no numbering, no extra keys.`
+    const deep = buildResumeDeepContext(resume, evaluation)
     const allScores = evaluation?.scores?.all || []
     const missingSkills = collectMissingSkills(allScores)
     const weakAreas = collectWeakDimensions(allScores)
-    const lowScoreTargets = collectLowScoreEntities(allScores, 6)
-    const userPrompt = `Resume: ${resume?.name || '—'} | skills: ${skills || 'None'} | exp: ${exp || 'None'} | edu: ${(resume?.education || []).slice(0, 3).map((e) => e.degree).join('; ') || 'None'} | projects: ${(resume?.projects || []).slice(0, 5).map((p) => p.name).join('; ') || 'None'}
-ATS avg: mass ${evaluation?.summary?.avgMassHiring ?? 'N/A'}% maang ${evaluation?.summary?.avgMaang ?? 'N/A'}% ivy ${evaluation?.summary?.avgIvyLeague ?? 'N/A'}
-Missing skills (ranked): ${missingSkills.slice(0, 10).map(toTitle).join(', ') || 'N/A'}
-Weak ATS dimensions: ${weakAreas.join(', ') || 'N/A'}
-Lowest scoring targets: ${lowScoreTargets.join(', ') || 'N/A'}
-Experience bullet samples: ${expBullets || 'N/A'}
-Project bullet samples: ${projectBullets || 'N/A'}
-Return JSON only with 6-8 recommendations.`
+    const lowScoreTargets = collectLowScoreEntities(allScores, 8)
+    const userPrompt = `CANDIDATE: ${deep.contact || resume?.name || '—'}
+
+SUMMARY/OBJECTIVE:
+${deep.summary}
+
+SKILLS (${(resume?.skills || []).length} listed):
+${deep.skillsList}
+
+EDUCATION:
+${deep.educationBlock}
+
+EXPERIENCE (verbatim bullets):
+${deep.experienceBlock}
+
+PROJECTS (verbatim bullets):
+${deep.projectBlock}
+
+LIKELY WEAK BULLETS (needs metrics/keywords):
+  ${deep.weakBulletsBlock}
+
+ATS SUMMARY: mass hiring avg ${evaluation?.summary?.avgMassHiring ?? 'N/A'}% | MAANG avg ${evaluation?.summary?.avgMaang ?? 'N/A'}% | Ivy avg ${evaluation?.summary?.avgIvyLeague ?? 'N/A'}%
+
+PER-TARGET GAPS (lowest scores first):
+${deep.entityGapsBlock}
+
+TOP MISSING SKILLS (frequency-weighted): ${missingSkills.slice(0, 12).map(toTitle).join(', ') || 'N/A'}
+WEAKEST ATS DIMENSIONS: ${weakAreas.join(', ') || 'N/A'}
+LOWEST SCORING EMPLOYERS/UNIVERSITIES: ${lowScoreTargets.join(', ') || 'N/A'}
+
+Return JSON array only.`
 
     const raw = await callGroq(systemPrompt, userPrompt, TOKENS_RECOMMENDATIONS, GROQ_MODEL, true)
     const llmRecommendations = parseJsonArraySalvage(raw)
@@ -655,7 +740,7 @@ Return JSON only with 6-8 recommendations.`
       ...buildDeterministicFallbackRecommendations(resume, evaluation),
       ...buildCoverageBoosterRecommendations(resume, missingSkills),
     ]
-    const recommendations = shapeRecommendationList(llmRecommendations, fallback, 6, 8)
+    const recommendations = shapeRecommendationList(llmRecommendations, fallback, 8, 10)
     res.json({ recommendations })
   } catch (err) {
     console.error('recommendations error:', err)

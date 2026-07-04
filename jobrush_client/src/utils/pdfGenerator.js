@@ -715,4 +715,114 @@ export const generateParsedResumePDF = (parsed, design = 'classic') => {
   return filename
 }
 
+function wrapPdfText(doc, text, x, maxWidth) {
+  return doc.splitTextToSize(String(text || ''), maxWidth)
+}
+
+/**
+ * Downloadable improvement report (not labeled as an AI report).
+ * @param {{ resume?: object, recommendations: object[], evaluation?: object }} payload
+ */
+export function generateImprovementReportPDF({ resume, recommendations = [], evaluation } = {}) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const margin = 15
+  const pageWidth = 210 - 2 * margin
+  const primary = '#0ea5e9'
+  let y = 0
+
+  const checkPage = (needed = 20) => {
+    if (y + needed > 275) {
+      doc.addPage()
+      y = 20
+    }
+  }
+
+  doc.setFillColor(primary)
+  doc.rect(0, 0, 210, 38, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(20)
+  doc.text('Resume Improvement Report', 105, 16, { align: 'center' })
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  const candidate = resume?.name || 'Candidate'
+  const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  doc.text(`Prepared for ${candidate}  |  ${dateStr}`, 105, 26, { align: 'center' })
+  if (resume?.email) {
+    doc.setFontSize(9)
+    doc.text(resume.email, 105, 33, { align: 'center' })
+  }
+  doc.setTextColor(0, 0, 0)
+  y = 48
+
+  if (evaluation?.summary) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.text('ATS Compatibility Overview', margin, y)
+    y += 7
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    const overview = `Mass hiring average: ${evaluation.summary.avgMassHiring ?? '—'}%  |  MAANG average: ${evaluation.summary.avgMaang ?? '—'}%  |  Ivy League average: ${evaluation.summary.avgIvyLeague ?? '—'}%`
+    const overviewLines = wrapPdfText(doc, overview, pageWidth)
+    doc.text(overviewLines, margin, y)
+    y += overviewLines.length * 5 + 6
+  }
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.text(`Recommendations (${recommendations.length})`, margin, y)
+  y += 8
+
+  recommendations.forEach((rec, index) => {
+    checkPage(42)
+    doc.setFillColor(245, 247, 250)
+    doc.rect(margin, y - 4, pageWidth, 6, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(14, 116, 144)
+    doc.text(`${index + 1}. ${rec.section || 'Section'}`, margin + 2, y)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(100, 100, 100)
+    doc.text(`${rec.impact || 'Medium'} impact`, 210 - margin - 2, y, { align: 'right' })
+    y += 7
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(9)
+
+    const blocks = [
+      ['Location', rec.where || rec.section],
+      ['Current state', rec.current],
+      ...(rec.evidence ? [['From your resume', rec.evidence]] : []),
+      ['Recommended change', rec.suggestion],
+      ...(rec.example ? [['Example rewrite', rec.example]] : []),
+    ]
+
+    for (const [label, value] of blocks) {
+      if (!value) continue
+      checkPage(16)
+      doc.setFont('helvetica', 'bold')
+      doc.text(`${label}:`, margin, y)
+      y += 4
+      doc.setFont('helvetica', 'normal')
+      const lines = wrapPdfText(doc, value, pageWidth)
+      doc.text(lines, margin, y)
+      y += lines.length * 4.2 + 3
+    }
+    y += 4
+  })
+
+  const pageCount = doc.getNumberOfPages()
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p)
+    doc.setFontSize(8)
+    doc.setTextColor(128, 128, 128)
+    doc.text('JobRush.ai — Resume Improvement Report', 105, doc.internal.pageSize.height - 10, { align: 'center' })
+  }
+
+  const safeName = String(candidate).replace(/\s+/g, '_').replace(/[^\w.-]/g, '') || 'Candidate'
+  const filename = `Resume_Improvement_Report_${safeName}_${Date.now()}.pdf`
+  doc.save(filename)
+  return filename
+}
+
 export { PARSED_RESUME_DESIGNS }

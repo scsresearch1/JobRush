@@ -12,6 +12,7 @@ import { getRecommendations, pingHealth } from '../services/groqService.js'
 import { evaluateResume } from '../ats/index.js'
 import { getDisplayLines } from '../utils/cleanAiText.js'
 import { readStoredParsedResume } from '../utils/parsedResumeStorage.js'
+import { generateImprovementReportPDF } from '../utils/pdfGenerator.js'
 
 const FALLBACK_RECOMMENDATIONS = [
   { section: 'Skills', current: 'Review your skills section', suggestion: 'Add ATS-targeted keywords from job descriptions', impact: 'High' },
@@ -101,21 +102,36 @@ const ResumeImprovements = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2 flex-wrap">
               <SparklesIcon className="w-8 h-8 text-primary-600" />
-              AI Resume Improvement Recommendations
+              Resume Improvement Recommendations
             </h1>
             <p className="text-gray-600">
-              Targeted suggestions from AI based on your resume and ATS evaluation.
+              Detailed, resume-specific guidance tied to your ATS scores, actual bullets, and target employers.
             </p>
           </div>
           {resume && (
             <div className="flex flex-wrap items-center gap-3 shrink-0">
               <button
                 type="button"
-                onClick={() => setShowDownloadModal(true)}
-                className="inline-flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700 transition"
+                onClick={() =>
+                  generateImprovementReportPDF({
+                    resume,
+                    recommendations: filteredRecommendations,
+                    evaluation,
+                  })
+                }
+                disabled={filteredRecommendations.length === 0}
+                className="inline-flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700 transition disabled:opacity-50"
               >
                 <ArrowDownTrayIcon className="w-5 h-5" />
-                Download PDF
+                Download Report PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDownloadModal(true)}
+                className="inline-flex items-center gap-2 border border-primary-300 bg-white text-primary-700 px-4 py-2 rounded-lg font-medium hover:bg-primary-50 transition"
+              >
+                <ArrowDownTrayIcon className="w-5 h-5" />
+                Download Resume PDF
               </button>
               <Link
                 to="/resume-upload"
@@ -138,7 +154,7 @@ const ResumeImprovements = () => {
               <span className="font-medium">Crafting your personalized recommendations...</span>
             </div>
             <p className="text-sm text-gray-600 italic">
-              Our AI is analyzing your resume against top ATS standards—almost there!
+              Analyzing your resume bullets, skills, and per-company ATS gaps to produce specific edits.
             </p>
             <p className="text-xs text-gray-500">
               💡 Tip: Strong resumes use action verbs and quantify impact. We're finding the best ways to highlight yours.
@@ -228,8 +244,13 @@ const ResumeImprovements = () => {
                 <p className="mb-3 text-sm text-gray-700">
                   <span className="font-medium">Apply in:</span> {rec.where || rec.section}
                 </p>
+                {rec.evidence && (
+                  <p className="mb-3 text-sm text-gray-600 italic border-l-2 border-gray-200 pl-3">
+                    <span className="font-medium not-italic text-gray-700">From your resume:</span> {rec.evidence}
+                  </p>
+                )}
                 <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3">
-                  <p className="text-sm font-medium text-primary-900">Suggested improvement</p>
+                  <p className="text-sm font-medium text-primary-900">Recommended change</p>
                   <p className="mt-1 text-sm text-primary-800">
                   {typeof rec.suggestion === 'string' ? (
                     (() => {
