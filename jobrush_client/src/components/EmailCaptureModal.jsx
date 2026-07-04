@@ -4,6 +4,7 @@ import { saveUser, getUserByEmail, touchUserLastSeen } from '../services/databas
 import { USERDB_FIELDS } from '../config/databaseSchema'
 import { getISTTimestamp } from '../utils/timestamp.js'
 import { mapFirebaseUserToLocal, computePostEmailFlow } from '../utils/journeyState.js'
+import { isSuperAdminEmail, isSuperAdminFirebaseRow } from '../utils/superAdmin.js'
 
 const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
   const [email, setEmail] = useState('')
@@ -21,7 +22,7 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
     setError('')
   }
 
-  const completeLogin = async (uniqueId, data) => {
+  const completeLogin = async (uniqueId, data, { superAdminAuthenticated = false } = {}) => {
     try {
       await touchUserLastSeen(uniqueId)
     } catch {
@@ -30,6 +31,7 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
     const userData = {
       ...mapFirebaseUserToLocal(data, uniqueId, {}),
       loginTime: getISTTimestamp(),
+      ...(superAdminAuthenticated ? { superAdminAuthenticated: true } : {}),
     }
     localStorage.setItem('jobRush_user', JSON.stringify(userData))
     onSuccess({ user: userData, flow: computePostEmailFlow(data) })
@@ -66,7 +68,9 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
           setIsLoading(false)
           return
         }
-        await completeLogin(pendingSuperAdmin.uniqueId, pendingSuperAdmin.data)
+        await completeLogin(pendingSuperAdmin.uniqueId, pendingSuperAdmin.data, {
+          superAdminAuthenticated: true,
+        })
         setIsLoading(false)
         return
       }
@@ -81,6 +85,12 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
         return
       }
 
+      if (isSuperAdminEmail(normalizedEmail) && !existing) {
+        setError('This account is not set up yet. Please contact support.')
+        setIsLoading(false)
+        return
+      }
+
       if (existing) {
         const { uniqueId, data } = existing
         const flow = computePostEmailFlow(data)
@@ -89,7 +99,7 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
           setIsLoading(false)
           return
         }
-        if (data[USERDB_FIELDS.IS_SUPER_ADMIN] === true) {
+        if (isSuperAdminFirebaseRow(data)) {
           setNeedsPassword(true)
           setPendingSuperAdmin(existing)
           setIsLoading(false)
@@ -158,9 +168,7 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
               )}
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-white">
-                {needsPassword ? 'Super Admin Sign In' : 'Start Your Journey'}
-              </h2>
+              <h2 className="text-2xl font-bold text-white">Start Your Journey</h2>
               <p className="text-primary-100 text-sm">
                 {needsPassword ? 'Enter your password to continue' : 'Enter your email to get started'}
               </p>
@@ -223,7 +231,7 @@ const EmailCaptureModal = ({ isOpen, onClose, onSuccess }) => {
               </>
             ) : (
               <>
-                <span>{needsPassword ? 'Sign In' : 'Continue'}</span>
+                <span>{needsPassword ? 'Continue' : 'Continue'}</span>
                 <ArrowRightIcon className="w-5 h-5" />
               </>
             )}

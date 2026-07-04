@@ -23,7 +23,7 @@ import { hasAppAccess } from './utils/access.js'
 import { getUser, syncUserFieldsToFirebase } from './services/database.js'
 import { mapFirebaseUserToLocal, computeStartJourneyFlow } from './utils/journeyState.js'
 import { QUOTA_ATS_MAX, QUOTA_MOCK_MAX } from './utils/quotas.js'
-import { hasUnlimitedQuota } from './utils/superAdmin.js'
+import { hasUnlimitedQuota, isSuperAdminUser } from './utils/superAdmin.js'
 
 function ProtectedRoute({ children }) {
   const user = JSON.parse(localStorage.getItem('jobRush_user') || '{}')
@@ -149,6 +149,10 @@ function App() {
     const flow = computeStartJourneyFlow(user)
     if (flow.kind === 'blocked_suspended') {
       window.alert('Your account is suspended. Please contact support.')
+      return
+    }
+    if (isSuperAdminUser(user) && user.superAdminAuthenticated !== true) {
+      setShowEmailModal(true)
       return
     }
     if (flow.kind === 'app') {

@@ -1,7 +1,7 @@
 import { USERDB_FIELDS } from '../config/databaseSchema.js'
 import { hasAppAccess } from './access.js'
 import { QUOTA_ATS_MAX, QUOTA_MOCK_MAX } from './quotas.js'
-import { hasUnlimitedQuota } from './superAdmin.js'
+import { hasUnlimitedQuota, isSuperAdminFirebaseRow } from './superAdmin.js'
 
 /**
  * Map a Firebase userdb node to the shape stored in localStorage (`jobRush_user`).
@@ -19,7 +19,7 @@ export function mapFirebaseUserToLocal(data, uniqueId, priorLocal = {}) {
     suspended: data[USERDB_FIELDS.SUSPENDED] === true,
     atsChecksUsed: Number(data[USERDB_FIELDS.ATS_CHECKS_USED]) || 0,
     mockInterviewsUsed: Number(data[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0,
-    isSuperAdmin: data[USERDB_FIELDS.IS_SUPER_ADMIN] === true,
+    isSuperAdmin: isSuperAdminFirebaseRow(data),
     isAuthenticated: hasExplicitStatus ? false : priorLocal.isAuthenticated === true,
   }
 }
@@ -30,7 +30,7 @@ export function mapFirebaseUserToLocal(data, uniqueId, priorLocal = {}) {
 export function computePostEmailFlow(firebaseRow) {
   if (!firebaseRow || typeof firebaseRow !== 'object') return { kind: 'payment_offer' }
   if (firebaseRow[USERDB_FIELDS.SUSPENDED] === true) return { kind: 'blocked_suspended' }
-  if (firebaseRow[USERDB_FIELDS.IS_SUPER_ADMIN] === true) return { kind: 'app' }
+  if (isSuperAdminFirebaseRow(firebaseRow)) return { kind: 'app' }
 
   const accessStatus = firebaseRow[USERDB_FIELDS.ACCESS_STATUS]
   const ats = Number(firebaseRow[USERDB_FIELDS.ATS_CHECKS_USED]) || 0

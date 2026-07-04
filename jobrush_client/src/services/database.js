@@ -13,6 +13,7 @@ import { database } from '../config/firebase'
 import { COLLECTIONS, USERDB_FIELDS, INTERVIEW_REPORTS_FIELDS, ATS_REPORT_FIELDS } from '../config/databaseSchema'
 import { getISTTimestamp } from '../utils/timestamp.js'
 import { QUOTA_ATS_MAX, QUOTA_MOCK_MAX } from '../utils/quotas.js'
+import { isSuperAdminFirebaseRow } from '../utils/superAdmin.js'
 
 // =============================================================================
 // REFERENCE HELPERS
@@ -42,7 +43,7 @@ async function userHasUnlimitedQuota(uniqueId) {
   if (!isFirebaseBackedUserId(uniqueId)) return false
   const snapshot = await get(userRef(uniqueId))
   if (!snapshot.exists()) return false
-  return snapshot.val()[USERDB_FIELDS.IS_SUPER_ADMIN] === true
+  return isSuperAdminFirebaseRow(snapshot.val())
 }
 
 /**

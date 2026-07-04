@@ -24,6 +24,12 @@ import { sendPaymentDecisionEmail, sendPaymentPendingReminderEmail } from '../se
 
 const QUOTA_ATS = 5
 const QUOTA_MOCK = 5
+const SUPER_ADMIN_EMAIL = 'sup_adm@jbrush.ai'
+
+function isSuperAdminRow(row) {
+  if (row[USERDB_FIELDS.IS_SUPER_ADMIN] === true) return true
+  return String(row[USERDB_FIELDS.EMAIL_ID] || '').trim().toLowerCase() === SUPER_ADMIN_EMAIL
+}
 
 function parseCsvLine(line) {
   const out = []
@@ -79,7 +85,7 @@ function deriveStatus(row) {
   if (row[USERDB_FIELDS.SUSPENDED] === true) {
     return { key: 'suspended', label: 'Suspended', tone: 'text-red-300 bg-red-950/40 ring-red-800/50' }
   }
-  if (row[USERDB_FIELDS.IS_SUPER_ADMIN] === true) {
+  if (isSuperAdminRow(row)) {
     return {
       key: 'super_admin',
       label: 'Super Admin',
@@ -457,7 +463,7 @@ export default function Users() {
                   const email = r[USERDB_FIELDS.EMAIL_ID] || '—'
                   const ts = formatTimestampIST(r[USERDB_FIELDS.TIMESTAMP])
                   const st = deriveStatus(r)
-                  const isSuperAdmin = r[USERDB_FIELDS.IS_SUPER_ADMIN] === true
+                  const isSuperAdmin = isSuperAdminRow(r)
                   const atsRaw = Number(r[USERDB_FIELDS.ATS_CHECKS_USED]) || 0
                   const mockRaw = Number(r[USERDB_FIELDS.MOCK_INTERVIEWS_USED]) || 0
                   const ats = isSuperAdmin ? atsRaw : Math.min(QUOTA_ATS, atsRaw)
