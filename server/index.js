@@ -99,7 +99,9 @@ const MAX_CHAT_MSG_CHARS = 8000
 /** Groq completion ceiling for this app (avoid mid-stream cuts; models typically allow ≤ 8k). */
 const GROQ_MAX_COMPLETION_TOKENS = 8192
 const TOKENS_EXPLAIN_ATS = 2048
-const TOKENS_RECOMMENDATIONS = 6144
+/** Groq free tier TPM ~6000 — keep input + max_tokens under ~5500 */
+const GROQ_TPM_SAFE_BUDGET = 5500
+const TOKENS_RECOMMENDATIONS = 2048
 const TOKENS_SOP = 2048
 const TOKENS_COVER_LETTER = 2048
 const TOKENS_INTERVIEW_TIPS = 2048
@@ -258,8 +260,13 @@ function removeTruncatedSuffix(text) {
  */
 async function groqComplete(messages, maxTokens, model, temperature, opts = {}) {
   const stripPartialTail = opts.stripPartialTail !== false
+  const noTokenBump = opts.noTokenBump === true
   let { content, finishReason } = await groqCompleteMessages(messages, maxTokens, model, temperature)
-  if (finishReason === 'length' && maxTokens < GROQ_MAX_COMPLETION_TOKENS) {
+  if (
+    !noTokenBump &&
+    finishReason === 'length' &&
+    maxTokens < GROQ_MAX_COMPLETION_TOKENS
+  ) {
     const bumped = Math.min(Math.max(maxTokens * 2, maxTokens + 1024), GROQ_MAX_COMPLETION_TOKENS)
     if (bumped > maxTokens) {
       const second = await groqCompleteMessages(messages, bumped, model, temperature)
@@ -273,7 +280,33 @@ async function groqComplete(messages, maxTokens, model, temperature, opts = {}) 
   return { content, finishReason }
 }
 
-async function callGroq(systemPrompt, userPrompt, maxTokens = TOKENS_EXPLAIN_ATS, model = GROQ_MODEL, jsonOutput = false) {
+function estimateGroqTokens(text) {
+  return Math.ceil(String(text || '').length / 3.5)
+}
+
+function fitPromptToGroqBudget(systemPrompt, userPrompt, maxCompletionTokens) {
+  const budget = GROQ_TPM_SAFE_BUDGET - maxCompletionTokens - 96
+  let sys = String(systemPrompt || '')
+  let usr = String(userPrompt || '')
+  while (estimateGroqTokens(sys) + estimateGroqTokens(usr) > budget && usr.length > 400) {
+    usr = usr.slice(0, Math.floor(usr.length * 0.82))
+  }
+  return { systemPrompt: sys, userPrompt: usr }
+}
+
+function isGroqQuotaError(err) {
+  const msg = String(err?.message || err || '').toLowerCase()
+  return (
+    msg.includes('rate_limit') ||
+    msg.includes('tokens per minute') ||
+    msg.includes('request too large') ||
+    msg.includes('413') ||
+    msg.includes('tpm') ||
+    msg.includes('quota')
+  )
+}
+
+async function callGroq(systemPrompt, userPrompt, maxTokens = TOKENS_EXPLAIN_ATS, model = GROQ_MODEL, jsonOutput = false, groqOpts = {}) {
   const { content } = await groqComplete(
     [
       { role: 'system', content: systemPrompt },
@@ -282,7 +315,7 @@ async function callGroq(systemPrompt, userPrompt, maxTokens = TOKENS_EXPLAIN_ATS
     maxTokens,
     model,
     0.25,
-    { stripPartialTail: !jsonOutput }
+    { stripPartialTail: !jsonOutput, ...groqOpts }
   )
   return content
 }
@@ -601,6 +634,18 @@ function buildDeterministicFallbackRecommendations(resume, evaluation, deep) {
       targetEmployers: lowTargets.slice(0, 4).join(', '),
       impact: 'Medium',
     })
+
+    recs.push({
+      section: 'Portfolio Links',
+      current: 'No GitHub, LinkedIn, or project demo link visible — recruiters cannot verify your projects before the interview.',
+      suggestion: `Add a single line under your contact block: GitHub (with README on "${firstProject}"), LinkedIn, and optionally a 2-minute demo video. Ensure the repo matches the stacks listed on your resume.`,
+      where: 'Header / contact section',
+      example: 'github.com/yourname | linkedin.com/in/yourname | Demo: Electricity Theft Detection (Python, ML)',
+      evidence: resume?.email || resume?.name || 'Contact block',
+      valueAddition: 'Proof of work short-circuits skepticism about fresher project claims.',
+      targetEmployers: lowTargets.slice(0, 3).join(', '),
+      impact: 'Medium',
+    })
   } else {
     const firstExp = partitionExperience(resume).fullTime[0]
     const weakBullet = extractBullets(firstExp, 1)[0] || 'a responsibility-heavy bullet'
@@ -718,6 +763,77 @@ function buildCoverageBoosterRecommendations(resume, missingSkills, deep) {
   return recs
 }
 
+function buildCompactRecommendationPrompts(resume, deep, { fresher, profile, missingSkills, lowScoreTargets }) {
+  const projectLines = (resume?.projects || [])
+    .slice(0, 4)
+    .map((p) => {
+      const bullets = extractBullets(p, 2)
+        .map((b) => b.slice(0, 90))
+        .join('; ')
+      return `${p.name || 'Project'}: ${bullets || String(p.description || '').slice(0, 100)}`
+    })
+    .join('\n')
+
+  const employers =
+    profile === 'cs'
+      ? 'TCS, Infosys, Wipro, Cognizant, Accenture, HCL, IBM, Oracle, SAP, Adobe, OpenText, MAANG'
+      : lowScoreTargets.slice(0, 5).join(', ') || deep.profileLabel
+
+  const fresherRules = fresher
+    ? 'FRESHER: no Experience recs, no invented jobs. Focus Skills, Projects, Achievements, Internships.'
+    : 'Has full-time experience — Experience recs only for real roles on resume.'
+
+  const profileRules =
+    profile === 'cs'
+      ? 'CS profile: IT/product employers only — never Cisco, Intel, NVIDIA, Samsung, or core hardware.'
+      : `Core profile (${deep.profileLabel}): target branch-relevant employers only.`
+
+  const systemPrompt = `Campus placement counselor for Indian graduates. Output ONLY a JSON array of 8-10 objects.
+Keys: section, current, suggestion, where, example, evidence, valueAddition, targetEmployers, impact.
+${fresherRules} ${profileRules}
+Write to "you". Quote their projects/skills. valueAddition = one sentence on why it helps recruiters. No markdown.`
+
+  const userPrompt = `Candidate: ${resume?.name || '—'} | ${deep.profileLabel} | ${fresher ? 'Fresher' : 'Experienced'}
+Skills: ${deep.skillsList.slice(0, 220)}
+Education: ${deep.educationBlock.slice(0, 160)}
+Projects:
+${projectLines || '(none)'}
+${fresher ? `Internships: ${deep.internshipsBlock.slice(0, 180)}` : `Experience: ${deep.experienceBlock.slice(0, 180)}`}
+ATS gaps (lowest): ${lowScoreTargets.slice(0, 6).join('; ') || 'N/A'}
+Missing skills: ${missingSkills.slice(0, 8).map(toTitle).join(', ') || 'N/A'}
+Allowed employers: ${employers}
+Return JSON array only (8-10 items).`
+
+  return fitPromptToGroqBudget(systemPrompt, userPrompt, TOKENS_RECOMMENDATIONS)
+}
+
+async function fetchLlmRecommendations(resume, deep, { fresher, profile, missingSkills, lowScoreTargets }) {
+  if (!groq) return []
+  const { systemPrompt, userPrompt } = buildCompactRecommendationPrompts(resume, deep, {
+    fresher,
+    profile,
+    missingSkills,
+    lowScoreTargets,
+  })
+  const estIn = estimateGroqTokens(systemPrompt) + estimateGroqTokens(userPrompt)
+  const estTotal = estIn + TOKENS_RECOMMENDATIONS
+  if (estTotal > GROQ_TPM_SAFE_BUDGET) {
+    console.warn('[recommendations] prompt over budget, skipping LLM', { estIn, estTotal })
+    return []
+  }
+  const raw = await callGroq(
+    systemPrompt,
+    userPrompt,
+    TOKENS_RECOMMENDATIONS,
+    GROQ_MODEL,
+    true,
+    { noTokenBump: true }
+  )
+  return parseJsonArraySalvage(raw).filter(
+    (r) => r && typeof r === 'object' && String(r.section || '').trim() && String(r.suggestion || '').trim()
+  )
+}
+
 function shapeRecommendationList(items, fallbackItems, minCount = 12, maxCount = 15, { fresher = false, profile = 'cs' } = {}) {
   const dedupe = new Set()
   const out = []
@@ -831,99 +947,34 @@ app.post('/api/recommendations', async (req, res) => {
     const fresher = deep.fresher
     const filteredScores = filterScoresForRecommendations(evaluation?.scores?.all || [], profile)
     const missingSkills = collectMissingSkills(filteredScores)
-    const weakAreas = collectWeakDimensions(filteredScores)
-    const lowScoreTargets = collectLowScoreEntities(filteredScores, 10)
+    const lowScoreTargets = collectLowScoreEntities(filteredScores, 8)
 
-    const fresherRules = fresher
-      ? `CANDIDATE IS A FRESHER (no substantive full-time experience). STRICT RULES:
-- Do NOT recommend creating fake full-time jobs or "Experience" sections at companies they never worked at.
-- Do NOT suggest "Software Engineer @ Infosys" or similar invented roles.
-- Focus ONLY on: Skills, Projects, Achievements, Internships (if listed), Education, Summary, Formatting, Project Positioning.
-- At least 4 recommendations must be about Projects with specific rewrites from their project text.
-- At least 2 about Skills/Achievements.`
-      : `Candidate has full-time experience — you may include Experience recommendations with real companies from their resume only.`
-
-    const profileRules =
-      profile === 'cs'
-        ? `PROFILE: Computer Science / IT. Target ONLY these employers in targetEmployers: IT services, consulting, product software (TCS, Infosys, Wipro, Cognizant, Accenture, HCL, IBM, Oracle, SAP, Adobe, OpenText, MAANG). Do NOT reference Cisco, Intel, NVIDIA, Qualcomm, Tata Motors, Bosch, BHEL, L&T civil, or other core/hardware employers.`
-        : `PROFILE: ${deep.profileLabel}. Target employers relevant to this core branch only — not generic IT services unless their degree is dual/CS.`
-
-    const systemPrompt = `You are an experienced campus placement counselor writing resume feedback for Indian graduates. Sound human, direct, and encouraging — write to the candidate as "you", not third person.
-
-Output ONLY a valid JSON array of 12-15 objects with these exact keys:
-- section (Skills|Projects|Achievements|Internships|Education|Summary|Formatting|Project Positioning|Keyword Coverage|Experience only if NOT a fresher)
-- current (quote their actual resume text — project name, skill list, or bullet)
-- suggestion (4-6 sentences: what to change, why recruiters care, how it helps campus shortlists — not keyword stuffing)
-- where (exact location on resume)
-- example (copy-paste-ready rewrite using THEIR project names and stacks)
-- evidence (verbatim snippet, max 120 chars)
-- valueAddition (one sentence: what the candidate gains — interview talking point, shortlist odds, clarity)
-- targetEmployers (2-4 comma-separated companies from the allowed list for their profile)
-- impact (High|Medium)
-
-${fresherRules}
-${profileRules}
-
-Global rules:
-1) Never invent employers, internships, or jobs not in the resume.
-2) Every suggestion must cite something specific from their projects, skills, or education.
-3) Explain VALUE — why this edit helps a human recruiter, not just ATS keywords.
-4) No markdown, no extra keys.`
-
-    const userPrompt = `CANDIDATE: ${deep.contact || resume?.name || '—'}
-PROFILE: ${deep.profileLabel} | FRESHER: ${fresher ? 'YES' : 'NO'}
-ALLOWED TARGET EMPLOYERS: ${deep.targetEmployers}
-
-SUMMARY:
-${deep.summary}
-
-SKILLS:
-${deep.skillsList}
-
-EDUCATION:
-${deep.educationBlock}
-
-ACHIEVEMENTS / AWARDS (extracted):
-  ${deep.achievementsBlock}
-
-INTERNSHIPS (if any):
-${deep.internshipsBlock}
-
-FULL-TIME EXPERIENCE:
-${deep.experienceBlock}
-
-PROJECTS (verbatim):
-${deep.projectBlock}
-
-WEAK PROJECT BULLETS:
-  ${deep.weakProjectBulletsBlock}
-
-ATS SUMMARY: mass hiring ${evaluation?.summary?.avgMassHiring ?? 'N/A'}% | MAANG ${evaluation?.summary?.avgMaang ?? 'N/A'}%
-
-RELEVANT PER-TARGET GAPS (profile-filtered, lowest first):
-${deep.entityGapsBlock}
-
-TOP MISSING SKILLS: ${missingSkills.slice(0, 12).map(toTitle).join(', ') || 'N/A'}
-WEAKEST DIMENSIONS: ${weakAreas.join(', ') || 'N/A'}
-LOWEST SCORING TARGETS: ${lowScoreTargets.join(', ') || 'N/A'}
-
-Return JSON array only (12-15 items).`
-
-    const raw = await callGroq(systemPrompt, userPrompt, TOKENS_RECOMMENDATIONS, GROQ_MODEL, true)
-    const llmRecommendations = parseJsonArraySalvage(raw)
-      .filter(
-        (r) =>
-          r &&
-          typeof r === 'object' &&
-          String(r.section || '').trim() &&
-          String(r.suggestion || '').trim()
-      )
     const fallback = [
       ...buildDeterministicFallbackRecommendations(resume, evaluation, deep),
       ...buildCoverageBoosterRecommendations(resume, missingSkills, deep),
     ]
+
+    let llmRecommendations = []
+    let source = 'deterministic'
+
+    try {
+      llmRecommendations = await fetchLlmRecommendations(resume, deep, {
+        fresher,
+        profile,
+        missingSkills,
+        lowScoreTargets,
+      })
+      if (llmRecommendations.length > 0) source = 'hybrid'
+    } catch (llmErr) {
+      const kind = isGroqQuotaError(llmErr) ? 'quota' : 'error'
+      console.warn(`[recommendations] LLM skipped (${kind}):`, llmErr?.message || llmErr)
+    }
+
     const recommendations = shapeRecommendationList(llmRecommendations, fallback, 12, 15, { fresher, profile })
-    res.json({ recommendations, meta: { profile, profileLabel: deep.profileLabel, fresher } })
+    res.json({
+      recommendations,
+      meta: { profile, profileLabel: deep.profileLabel, fresher, source },
+    })
   } catch (err) {
     console.error('recommendations error:', err)
     const status = err.message?.includes('not configured') ? 503 : 500

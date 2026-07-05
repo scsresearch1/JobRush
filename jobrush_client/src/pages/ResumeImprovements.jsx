@@ -76,7 +76,13 @@ const ResumeImprovements = () => {
         setRecommendations(recs)
       }
       if (meta) setReportMeta(meta)
-      setError(null)
+      if (meta?.source === 'deterministic') {
+        setError(
+          'Personalized recommendations are ready. AI enhancement was skipped to stay within API limits — your guidance is built from your resume and ATS scores.'
+        )
+      } else {
+        setError(null)
+      }
       console.log('[ResumeImprovements] Success', { count: recs?.length })
     } catch (err) {
       console.error('[ResumeImprovements] Error', { message: err.message, name: err.name, stack: err.stack })
@@ -188,9 +194,19 @@ const ResumeImprovements = () => {
           </div>
         )}
         {error && (
-          <div className="mb-4 max-w-3xl rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-sm text-amber-950 shadow-sm">
-            <p className="font-semibold text-amber-900">Using built-in suggestions</p>
-            <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed text-amber-900/90">{error}</p>
+          <div className={`mb-4 max-w-3xl rounded-xl border p-4 text-sm shadow-sm ${
+            reportMeta?.source === 'deterministic'
+              ? 'border-sky-200 bg-sky-50/90 text-sky-950'
+              : 'border-amber-200 bg-amber-50/90 text-amber-950'
+          }`}>
+            <p className={`font-semibold ${
+              reportMeta?.source === 'deterministic' ? 'text-sky-900' : 'text-amber-900'
+            }`}>
+              {reportMeta?.source === 'deterministic' ? 'Recommendations ready' : 'Using built-in suggestions'}
+            </p>
+            <p className={`mt-2 whitespace-pre-wrap break-words leading-relaxed ${
+              reportMeta?.source === 'deterministic' ? 'text-sky-900/90' : 'text-amber-900/90'
+            }`}>{error}</p>
             <button
               type="button"
               onClick={fetchRecommendations}
