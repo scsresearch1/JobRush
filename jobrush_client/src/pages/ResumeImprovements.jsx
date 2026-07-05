@@ -76,9 +76,9 @@ const ResumeImprovements = () => {
         setRecommendations(recs)
       }
       if (meta) setReportMeta(meta)
-      if (meta?.source === 'deterministic') {
+      if (meta?.source === 'deterministic' || meta?.source === 'rich') {
         setError(
-          'Personalized recommendations are ready. AI enhancement was skipped to stay within API limits — your guidance is built from your resume and ATS scores.'
+          'Detailed recommendations are ready — built from your resume, ATS scores, and per-company gaps. AI polish was skipped to stay within API limits.'
         )
       } else {
         setError(null)
@@ -195,17 +195,17 @@ const ResumeImprovements = () => {
         )}
         {error && (
           <div className={`mb-4 max-w-3xl rounded-xl border p-4 text-sm shadow-sm ${
-            reportMeta?.source === 'deterministic'
+            reportMeta?.source === 'deterministic' || reportMeta?.source === 'rich'
               ? 'border-sky-200 bg-sky-50/90 text-sky-950'
               : 'border-amber-200 bg-amber-50/90 text-amber-950'
           }`}>
             <p className={`font-semibold ${
-              reportMeta?.source === 'deterministic' ? 'text-sky-900' : 'text-amber-900'
+              reportMeta?.source === 'deterministic' || reportMeta?.source === 'rich' ? 'text-sky-900' : 'text-amber-900'
             }`}>
-              {reportMeta?.source === 'deterministic' ? 'Recommendations ready' : 'Using built-in suggestions'}
+              {reportMeta?.source === 'deterministic' || reportMeta?.source === 'rich' ? 'Recommendations ready' : 'Using built-in suggestions'}
             </p>
             <p className={`mt-2 whitespace-pre-wrap break-words leading-relaxed ${
-              reportMeta?.source === 'deterministic' ? 'text-sky-900/90' : 'text-amber-900/90'
+              reportMeta?.source === 'deterministic' || reportMeta?.source === 'rich' ? 'text-sky-900/90' : 'text-amber-900/90'
             }`}>{error}</p>
             <button
               type="button"
