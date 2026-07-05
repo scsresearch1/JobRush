@@ -10,6 +10,15 @@ import express from 'express'
 import cors from 'cors'
 import Groq from 'groq-sdk'
 import { Resend } from 'resend'
+import {
+  detectResumeProfile,
+  isFresherResume,
+  partitionExperience,
+  filterScoresForRecommendations,
+  getProfileLabel,
+  CS_RECOMMENDATION_ENTITIES,
+  sanitizeRecommendationForProfile,
+} from '../jobrush_client/src/utils/resumeProfile.js'
 
 process.on('uncaughtException', (err) => {
   console.error('[fatal] uncaughtException', err?.stack || err)
@@ -90,7 +99,7 @@ const MAX_CHAT_MSG_CHARS = 8000
 /** Groq completion ceiling for this app (avoid mid-stream cuts; models typically allow ≤ 8k). */
 const GROQ_MAX_COMPLETION_TOKENS = 8192
 const TOKENS_EXPLAIN_ATS = 2048
-const TOKENS_RECOMMENDATIONS = 4096
+const TOKENS_RECOMMENDATIONS = 6144
 const TOKENS_SOP = 2048
 const TOKENS_COVER_LETTER = 2048
 const TOKENS_INTERVIEW_TIPS = 2048
@@ -355,6 +364,10 @@ function collectMissingSkills(scores) {
     .map(([k]) => k)
 }
 
+function collectMissingSkillsFromFiltered(scores, profile) {
+  return collectMissingSkills(filterScoresForRecommendations(scores, profile))
+}
+
 function collectWeakDimensions(scores) {
   const dims = [
     { key: 'mandatory_skill_score', label: 'mandatory skills', badBelow: 70 },
@@ -389,6 +402,10 @@ function collectLowScoreEntities(scores, limit = 5) {
     .map((s) => `${s.entity} (${s.score}%)`)
 }
 
+function collectLowScoreEntitiesForProfile(scores, profile, limit = 8) {
+  return collectLowScoreEntities(filterScoresForRecommendations(scores, profile), limit)
+}
+
 function extractBullets(entry, max = 6) {
   if (Array.isArray(entry?.responsibilities)) {
     return entry.responsibilities.map((b) => String(b).trim()).filter(Boolean).slice(0, max)
@@ -406,52 +423,82 @@ function extractBullets(entry, max = 6) {
 }
 
 function buildResumeDeepContext(resume, evaluation) {
-  const experienceLines = (resume?.experience || []).slice(0, 6).map((e) => {
-    const role = e.role || e.title || 'Role'
-    const company = e.company || 'Company'
-    const duration = e.duration ? ` (${e.duration})` : ''
-    const bullets = extractBullets(e, 5)
-    const bulletBlock = bullets.length
-      ? bullets.map((b) => `    • "${b.slice(0, 220)}"`).join('\n')
-      : '    • (no bullet text parsed — suggest adding quantified bullets)'
-    return `  ${role} @ ${company}${duration}\n${bulletBlock}`
-  })
+  const profile = detectResumeProfile(resume)
+  const fresher = isFresherResume(resume)
+  const { internships, fullTime } = partitionExperience(resume)
+  const relevantScores = filterScoresForRecommendations(evaluation?.scores?.all || [], profile)
 
-  const projectLines = (resume?.projects || []).slice(0, 5).map((p) => {
+  const formatRoleBlock = (entries, label) =>
+    entries
+      .slice(0, 5)
+      .map((e) => {
+        const role = e.role || e.title || label
+        const company = e.company || 'Organization'
+        const duration = e.duration ? ` (${e.duration})` : ''
+        const bullets = extractBullets(e, 5)
+        const bulletBlock = bullets.length
+          ? bullets.map((b) => `    • "${b.slice(0, 220)}"`).join('\n')
+          : `    • "${String(e.description || '').slice(0, 220) || '(no detail parsed)'}"`
+        return `  ${role} @ ${company}${duration}\n${bulletBlock}`
+      })
+      .join('\n')
+
+  const projectLines = (resume?.projects || []).slice(0, 6).map((p) => {
     const bullets = extractBullets(p, 4)
     const bulletBlock = bullets.length
       ? bullets.map((b) => `    • "${b.slice(0, 220)}"`).join('\n')
-      : `    • description: "${String(p.description || '').slice(0, 220)}"`
+      : `    • "${String(p.description || '').slice(0, 220)}"`
     return `  ${p.name || 'Unnamed project'}\n${bulletBlock}`
   })
 
-  const allScores = evaluation?.scores?.all || []
-  const entityGaps = [...allScores]
+  const achievementLines = []
+  const achievementNeedle = /\b(hackathon|winner|rank|award|certificate|certified|published|gpa|cgpa|merit|olympiad|competition|1st|2nd|3rd|top)\b/i
+  for (const p of resume?.projects || []) {
+    for (const b of extractBullets(p, 6)) {
+      if (achievementNeedle.test(b)) achievementLines.push(`Project "${p.name}": ${b.slice(0, 180)}`)
+    }
+  }
+  for (const e of resume?.education || []) {
+    const line = `${e.degree || ''} ${e.institution || ''} ${e.year || ''}`
+    if (achievementNeedle.test(line)) achievementLines.push(line.trim())
+  }
+
+  const entityGaps = [...relevantScores]
     .sort((a, b) => Number(a?.score || 0) - Number(b?.score || 0))
-    .slice(0, 10)
+    .slice(0, 12)
     .map((s) => {
       const missM = (s.missing_mandatory || []).slice(0, 8).map(toTitle).join(', ') || 'none'
       const missP = (s.missing_preferred || []).slice(0, 5).map(toTitle).join(', ') || 'none'
       const matchM = (s.matched_mandatory || []).slice(0, 5).map(toTitle).join(', ') || 'none'
       const b = s.breakdown || {}
-      return `  ${s.entity} — score ${s.score}% | mandatory skills ${Math.round(b.mandatory_skill_score || 0)}% | project relevance ${Math.round((b.project_relevance || 0) * 100)}% | missing mandatory: ${missM} | missing preferred: ${missP} | already matched: ${matchM}`
+      return `  ${s.entity} — score ${s.score}% | mandatory skills ${Math.round(b.mandatory_skill_score || 0)}% | project relevance ${Math.round((b.project_relevance || 0) * 100)}% | missing mandatory: ${missM} | missing preferred: ${missP} | matched: ${matchM}`
     })
 
-  const weakBullets = []
-  for (const e of (resume?.experience || []).slice(0, 4)) {
-    for (const b of extractBullets(e, 2)) {
-      if (b.length < 40 || !/\d|%|increas|reduc|improv|led|built|develop/i.test(b)) {
-        weakBullets.push(`"${b.slice(0, 160)}" (${e.role || e.title} @ ${e.company})`)
+  const weakProjectBullets = []
+  for (const p of resume?.projects || []) {
+    for (const b of extractBullets(p, 3)) {
+      if (b.length < 50 || !/\d|%|user|accuracy|improv|reduc|built|develop|deploy/i.test(b)) {
+        weakProjectBullets.push(`"${b.slice(0, 160)}" (project: ${p.name})`)
       }
     }
   }
 
+  const targetEmployers =
+    profile === 'cs'
+      ? [...CS_RECOMMENDATION_ENTITIES].slice(0, 18).join(', ')
+      : collectLowScoreEntitiesForProfile(evaluation?.scores?.all || [], profile, 10).join(', ')
+
   return {
-    experienceBlock: experienceLines.join('\n') || '  (none parsed)',
+    profile,
+    profileLabel: getProfileLabel(profile),
+    fresher,
+    internshipsBlock: formatRoleBlock(internships, 'Internship') || '  (none listed)',
+    experienceBlock: formatRoleBlock(fullTime, 'Role') || '  (none — candidate is a fresher with no full-time roles)',
     projectBlock: projectLines.join('\n') || '  (none parsed)',
+    achievementsBlock: achievementLines.slice(0, 8).join('\n  ') || '  (none explicitly listed — suggest adding hackathons, coursework awards, certifications)',
     entityGapsBlock: entityGaps.join('\n') || '  (no ATS scores)',
-    weakBulletsBlock: weakBullets.slice(0, 6).join('\n  ') || '  (identify weak bullets from experience text)',
-    skillsList: (resume?.skills || []).slice(0, 40).join(', ') || 'None listed',
+    weakProjectBulletsBlock: weakProjectBullets.slice(0, 6).join('\n  ') || '  (review project bullets for outcomes)',
+    skillsList: (resume?.skills || []).slice(0, 45).join(', ') || 'None listed',
     educationBlock:
       (resume?.education || [])
         .slice(0, 4)
@@ -459,142 +506,245 @@ function buildResumeDeepContext(resume, evaluation) {
         .join('; ') || 'None listed',
     summary: String(resume?.summary || resume?.objective || '').trim().slice(0, 400) || '(no summary section)',
     contact: [resume?.name, resume?.email].filter(Boolean).join(' | '),
+    targetEmployers,
+    internshipCount: internships.length,
+    fullTimeCount: fullTime.length,
   }
 }
 
-function buildDeterministicFallbackRecommendations(resume, evaluation) {
+function buildDeterministicFallbackRecommendations(resume, evaluation, deep) {
+  const profile = deep?.profile || detectResumeProfile(resume)
+  const fresher = deep?.fresher ?? isFresherResume(resume)
   const scores = evaluation?.scores?.all || []
-  const missingSkills = collectMissingSkills(scores)
-  const weakAreas = collectWeakDimensions(scores)
-  const roleHints = uniqueStrings((resume?.experience || []).map((e) => e?.role || e?.title), 3)
-  const projectHints = uniqueStrings((resume?.projects || []).map((p) => p?.name), 3)
-  const firstRole = roleHints[0] || 'Most relevant experience entry'
-  const lowestTarget = collectLowScoreEntities(scores, 1)[0] || 'target employers'
-  const firstExp = (resume?.experience || [])[0]
-  const firstBullets = extractBullets(firstExp, 2)
-  const weakFirstBullet = firstBullets[0] || 'your top experience bullet'
-  const firstProject = projectHints[0] || 'Top relevant project'
-  const topSkillLine = missingSkills.length
-    ? `Your ATS scan shows repeated gaps for: ${missingSkills.slice(0, 6).map(toTitle).join(', ')}. Add only terms you can defend in an interview.`
-    : 'Mirror 4–6 keywords from your target job description into Skills and the first bullet of your most recent role.'
+  const filtered = filterScoresForRecommendations(scores, profile)
+  const missingSkills = collectMissingSkills(filtered)
+  const lowTargets = collectLowScoreEntities(filtered, 5)
+  const projectHints = uniqueStrings((resume?.projects || []).map((p) => p?.name), 4)
+  const firstProject = projectHints[0] || 'your strongest project'
+  const firstProjectEntry = (resume?.projects || []).find((p) => p?.name === firstProject) || resume?.projects?.[0]
+  const firstProjectBullet = extractBullets(firstProjectEntry, 1)[0] || 'your project description'
+  const skillsSample = (resume?.skills || []).slice(0, 6).join(', ') || 'a thin skills list'
+  const targetSample = lowTargets[0] || (profile === 'cs' ? 'TCS (campus hiring)' : 'relevant core employers')
 
   const recs = [
     {
       section: 'Skills',
-      current: `Current skills (${(resume?.skills || []).slice(0, 8).join(', ') || 'sparse list'}) may not surface ATS-priority terms for ${lowestTarget}.`,
-      suggestion: `${topSkillLine} Group skills by category (Languages, Frameworks, Cloud/Tools) and place the 6 most role-relevant terms in the first row so parsers read them early.`,
-      where: 'Skills section (top third of resume)',
-      example: 'Languages: Java, Python, SQL | Frameworks: React, Spring Boot | Cloud: AWS (EC2, S3), Docker, GitHub Actions',
-      evidence: (resume?.skills || []).slice(0, 3).join(', ').slice(0, 120),
-      impact: 'High',
-    },
-    {
-      section: 'Experience',
-      current: `Bullet reads passively or without metrics: "${String(weakFirstBullet).slice(0, 140)}"`,
-      suggestion:
-        'Rewrite this bullet as Action + Scope + Stack + Result. Lead with a strong verb, name the system or user base, and add one number (%, time saved, revenue, users, latency, defects). This directly lifts project-relevance and mandatory-skill scores.',
-      where: `Experience > ${firstRole}${firstExp?.company ? ` @ ${firstExp.company}` : ''}`,
-      example: `Led migration of ${firstExp?.company || 'core'} reporting jobs to Python + SQL pipelines, cutting manual weekly effort by 35% for a 12-person ops team.`,
-      evidence: String(weakFirstBullet).slice(0, 120),
+      current: `Your skills section (${skillsSample}) does not yet signal the depth recruiters at ${targetSample} scan for in the first 10 seconds.`,
+      suggestion: `Group skills into clear buckets (Languages, Frameworks/Tools, Databases, CS Fundamentals) and lead with the 6 skills you would actually discuss in a technical interview. ${missingSkills.length ? `Based on your ATS gaps, prioritize adding (only if true): ${missingSkills.slice(0, 5).map(toTitle).join(', ')}.` : 'Mirror the stack from your best project so skills and projects tell the same story.'}`,
+      where: 'Skills section — first half of the resume',
+      example: 'Languages: Java, Python, SQL | CS Fundamentals: DSA, OOP, DBMS | Tools: Git, REST APIs, Jupyter',
+      evidence: skillsSample.slice(0, 120),
+      valueAddition: 'Recruiters instantly see role-fit; ATS parsers match mandatory keywords for campus drives.',
+      targetEmployers: lowTargets.slice(0, 4).join(', ') || deep?.targetEmployers?.slice(0, 80),
       impact: 'High',
     },
     {
       section: 'Projects',
-      current: 'Project bullets may not clearly map to job requirements.',
-      suggestion:
-        'For each core project, add stack + problem + your contribution + measurable outcome in 2-3 bullets. Mirror job keywords naturally in those bullets.',
+      current: `Project "${firstProject}" reads as: "${String(firstProjectBullet).slice(0, 140)}" — the problem, your role, and outcome are not yet obvious.`,
+      suggestion: `Expand this into 3 bullets: (1) problem & dataset/users, (2) what YOU built (stack + design choice), (3) measurable result (accuracy, latency, users, time saved). Tie the stack to employers like ${lowTargets.slice(0, 2).join(' or ') || 'your target companies'} without keyword stuffing.`,
       where: `Projects > ${firstProject}`,
-      example: 'Personal Project: Developed a fraud-detection model (Python, XGBoost) that improved precision from 0.71 to 0.87 on test data.',
+      example: `Electricity Theft Detection — Built an ML pipeline (Python, Pandas, scikit-learn) on 12k meter readings; achieved 91% precision on held-out data and documented feature engineering steps recruiters can discuss.`,
+      evidence: String(firstProjectBullet).slice(0, 120),
+      valueAddition: 'Projects become interview stories; hiring managers see proof you can ship, not just list coursework.',
+      targetEmployers: lowTargets.slice(0, 3).join(', '),
       impact: 'High',
-    },
-    {
-      section: 'Summary',
-      current: 'No focused profile summary for the target role.',
-      suggestion: `Add a 2-3 line summary tailored to ${roleHints.join(', ') || 'your target role'} with strongest tools, domain focus, and proof of impact.`,
-      where: 'Resume header > Professional Summary',
-      example: 'Software Engineer focused on backend systems with Python, SQL, and AWS; delivered automation workflows that cut reporting time by 35%.',
-      impact: 'Medium',
-    },
-    {
-      section: 'Formatting',
-      current: 'Formatting may reduce ATS extraction quality.',
-      suggestion:
-        'Use standard headings, simple chronology, consistent date format, and avoid dense graphics/tables. Keep section titles explicit (Experience, Projects, Skills, Education).',
-      where: 'Overall resume formatting',
-      example: 'Use section titles exactly as: Summary, Skills, Experience, Projects, Education.',
-      impact: 'Medium',
     },
   ]
 
-  if (weakAreas.length) {
+  if (fresher) {
     recs.push({
-      section: 'ATS Gaps',
-      current: `Lower scoring areas: ${weakAreas.join(', ')}.`,
-      suggestion:
-        'Prioritize edits in those areas first and re-run ATS check after each 2-3 changes to validate score movement.',
-      where: 'Sections linked to lowest ATS dimensions',
-      example: 'If formatting and project relevance are weakest, fix headings first and strengthen top 2 project bullets with outcomes.',
+      section: 'Achievements',
+      current: deep?.achievementsBlock?.includes('none explicitly') ? 'No achievements section — hackathons, coursework awards, or certifications are easy to miss.' : 'Achievements exist but are buried inside projects/education.',
+      suggestion: 'Add a short Achievements block (3–5 lines): hackathon ranks, coding contest positions, relevant certifications (NPTEL, Coursera with grade), Dean\'s list, or open-source contributions. Keep each line one accomplishment with a number or credential.',
+      where: 'Between Education and Projects (or after Skills)',
+      example: '2nd place — College Hackathon 2025 (ML track) | NPTEL Python for Data Science — Elite + Gold | Published mini-project on GitHub with 40+ stars',
+      evidence: deep?.achievementsBlock?.slice(0, 120) || 'No awards listed',
+      valueAddition: 'Differentiates you from hundreds of similar fresher resumes with identical skill lists.',
+      targetEmployers: lowTargets.slice(0, 3).join(', '),
+      impact: 'High',
+    })
+
+    if ((deep?.internshipCount || 0) > 0) {
+      recs.push({
+        section: 'Internships',
+        current: `You have ${deep.internshipCount} internship-style role(s) but they may read like job titles without outcomes.`,
+        suggestion: 'Treat internships as mini full-time roles: 2–3 bullets each with stack, team context, and one metric. If it was remote/part-time, say so honestly — still highlight deliverables.',
+        where: 'Internships section (separate from future full-time Experience)',
+        example: 'Software Intern @ ABC — Automated report generation in Python, saving ~4 hours/week for the analytics team; presented findings to 5 stakeholders.',
+        evidence: deep?.internshipsBlock?.slice(0, 120) || 'Internship listed',
+        valueAddition: 'Shows workplace exposure even without full-time experience.',
+        targetEmployers: lowTargets.slice(0, 3).join(', '),
+        impact: 'High',
+      })
+    } else {
+      recs.push({
+        section: 'Internships',
+        current: 'No internship is listed — many campus recruiters still shortlist candidates with strong projects + achievements.',
+        suggestion: 'Do NOT invent an internship. Instead, strengthen projects and add a GitHub/portfolio link. If you have unpaid project work, label it clearly as "Academic Project" or "Personal Project", not as employment at a company.',
+        where: 'Projects + header links',
+        example: 'Added GitHub link with README, demo video, and reproducible notebook for the electricity theft detection project.',
+        evidence: 'No internship entries',
+        valueAddition: 'Keeps your resume honest while still competitive for fresher drives.',
+        targetEmployers: lowTargets.slice(0, 3).join(', '),
+        impact: 'Medium',
+      })
+    }
+
+    recs.push({
+      section: 'Summary',
+      current: deep?.summary?.startsWith('(no') ? 'Missing professional summary — recruiters decide in 6 seconds whether to read projects.' : 'Summary may be generic and not anchored to your degree + best project.',
+      suggestion: `Write 2–3 lines: degree + specialization (${deep?.profileLabel}), strongest stacks from your projects, and one proof point (project outcome, achievement, or internship). Speak in first person implied ("${resume?.name?.split(' ')?.[0] || 'Candidate'} — B.Tech CS graduate…").`,
+      where: 'Top of resume — Professional Summary',
+      example: 'B.Tech Computer Science graduate with hands-on ML projects (Python, SQL) and campus hackathon recognition; seeking entry-level software roles at product and IT services firms.',
+      evidence: deep?.summary?.slice(0, 100) || 'No summary',
+      valueAddition: 'Gives human context before the ATS keywords; helps non-technical recruiters understand your fit.',
+      targetEmployers: lowTargets.slice(0, 4).join(', '),
+      impact: 'Medium',
+    })
+  } else {
+    const firstExp = partitionExperience(resume).fullTime[0]
+    const weakBullet = extractBullets(firstExp, 1)[0] || 'a responsibility-heavy bullet'
+    recs.push({
+      section: 'Experience',
+      current: `Full-time bullet: "${String(weakBullet).slice(0, 140)}" — impact is not quantified.`,
+      suggestion: 'Rewrite top bullets as Action + Scope + Stack + Result. One metric per bullet (%, time, users, revenue, defects). Align verbs with the profile you want next.',
+      where: `Experience > ${firstExp?.role || firstExp?.title || 'Role'} @ ${firstExp?.company || 'Company'}`,
+      example: 'Engineered batch ETL jobs in Python + SQL serving 3 downstream dashboards, cutting manual reconciliation from 6 hours to 45 minutes per week.',
+      evidence: String(weakBullet).slice(0, 120),
+      valueAddition: 'Experienced recruiters scan for scale and outcomes, not task lists.',
+      targetEmployers: lowTargets.slice(0, 3).join(', '),
       impact: 'High',
     })
   }
 
-  if (projectHints.length) {
+  if (projectHints.length > 1) {
     recs.push({
       section: 'Project Positioning',
-      current: `Projects listed: ${projectHints.join(', ')}.`,
-      suggestion:
-        'Move the most relevant project up and add a one-line context sentence that matches the target role expectations.',
-      where: 'Projects section order and first project description',
-      example: 'Placed "Inventory Forecasting System" first and added: "Built for real-time demand prediction in retail operations."',
+      current: `Projects listed: ${projectHints.join(', ')} — order may not match ${profile === 'cs' ? 'software' : 'core'} recruiter priorities.`,
+      suggestion: `Move the project closest to ${targetSample} requirements to the top. Add a one-line "why it matters" under the title (domain + stack).`,
+      where: 'Projects section ordering',
+      example: `Moved "${firstProject}" to #1 with subtitle: "ML classification on real utility data — Python, scikit-learn"`,
+      evidence: projectHints.join(', ').slice(0, 100),
+      valueAddition: 'Recruiters often read only the first project in depth.',
+      targetEmployers: lowTargets.slice(0, 3).join(', '),
+      impact: 'Medium',
+    })
+
+    for (let pi = 1; pi < Math.min(projectHints.length, 4); pi++) {
+      const pname = projectHints[pi]
+      const entry = (resume?.projects || []).find((p) => p?.name === pname) || resume?.projects?.[pi]
+      const bullet = extractBullets(entry, 1)[0] || 'brief description'
+      recs.push({
+        section: 'Projects',
+        current: `"${pname}" — "${String(bullet).slice(0, 130)}" needs clearer technical depth for campus technical rounds.`,
+        suggestion: `For "${pname}", add: problem statement in one line, your individual contribution (not team-only), tech stack in parentheses, and one outcome metric. Prepare a 60-second verbal walkthrough recruiters use in TCS/Infosys technical screens.`,
+        where: `Projects > ${pname}`,
+        example: `${pname} — Designed REST API (Spring Boot, MySQL) for inventory tracking; reduced manual stock checks by automating daily reconciliation reports.`,
+        evidence: String(bullet).slice(0, 100),
+        valueAddition: 'Each additional strong project doubles your interview talking points.',
+        targetEmployers: lowTargets.slice(0, 3).join(', '),
+        impact: pi === 1 ? 'High' : 'Medium',
+      })
+    }
+  }
+
+  if (fresher && (resume?.education || []).length > 0) {
+    const edu = resume.education[0]
+    recs.push({
+      section: 'Education',
+      current: `${edu.degree || 'Degree'} at ${edu.institution || 'institution'} — coursework and CGPA may not be visible to recruiters scanning quickly.`,
+      suggestion: 'List degree, branch, graduation year, and CGPA/percentage if above 7.5 (or omit if lower). Add 2–3 relevant coursework lines (DSA, DBMS, OS, ML) that match your projects.',
+      where: 'Education section',
+      example: 'B.Tech Computer Science, XYZ University (2025) | CGPA: 8.2 | Coursework: Data Structures, DBMS, Machine Learning, Computer Networks',
+      evidence: `${edu.degree || ''} ${edu.institution || ''}`.trim().slice(0, 100),
+      valueAddition: 'Campus eligibility filters often use degree + year; coursework signals depth beyond skill lists.',
+      targetEmployers: lowTargets.slice(0, 3).join(', '),
       impact: 'Medium',
     })
   }
 
-  return recs.slice(0, 8)
+  recs.push({
+    section: 'Formatting',
+    current: 'Dense skill lists or missing section headers can hurt ATS parsing and human skim-reading.',
+    suggestion: 'Use standard headings: Summary, Skills, Education, Projects, Achievements, Internships (if any), Experience (only if full-time). Avoid tables/icons. Keep dates consistent (MMM YYYY).',
+    where: 'Overall layout',
+    example: 'Replaced paragraph-style skills with categorized comma lists; added explicit "Projects" and "Achievements" headings.',
+    evidence: 'Layout / parsing',
+    valueAddition: 'Ensures both ATS and recruiters extract the right sections.',
+    targetEmployers: 'All targets',
+    impact: 'Medium',
+  })
+
+  return recs
 }
 
-function buildCoverageBoosterRecommendations(resume, missingSkills) {
+function buildCoverageBoosterRecommendations(resume, missingSkills, deep) {
   const top = missingSkills.slice(0, 6).map(toTitle)
   if (!top.length) return []
-  const expRole = uniqueStrings((resume?.experience || []).map((e) => e?.role || e?.title), 1)[0] || 'your target role'
-  return [
+  const fresher = deep?.fresher ?? isFresherResume(resume)
+  const firstProject = (resume?.projects || [])[0]?.name || 'your lead project'
+
+  const recs = [
     {
       section: 'Keyword Coverage',
-      current: 'Critical ATS terms are underrepresented across sections.',
-      suggestion: `Naturally include these terms where true: ${top.join(', ')}. Add 2 terms in Skills, 2 in Experience bullets, and 1-2 in Projects for better match coverage.`,
-      where: 'Skills + Experience + Projects',
-      example: 'Added "Research" and "Publication" in projects, and "Machine Learning" in both skills and internship bullets.',
-      impact: 'High',
-    },
-    {
-      section: 'Experience Alignment',
-      current: 'Role impact is not clearly tied to hiring keywords.',
-      suggestion: `For your ${expRole} experience, rewrite 2 bullets using "action + stack + outcome", and include one relevant missing keyword in each bullet.`,
-      where: `Experience > ${expRole}`,
-      example: 'Implemented CI/CD in GitHub Actions for a Node.js service, reducing release turnaround time by 40%.',
+      current: `Skills like ${top.slice(0, 3).join(', ')} appear in ATS gaps for your target employers but are not woven through your resume narrative.`,
+      suggestion: fresher
+        ? `Add 2 terms to Skills, 2 to your "${firstProject}" project bullets, and mention 1 in your summary — only where you can explain them in an interview. Avoid listing Cisco/core-hardware employers if you are a CS candidate; focus on ${deep?.targetEmployers?.slice(0, 60) || 'IT services and product firms'}.`
+        : `Spread ${top.join(', ')} across Skills, Experience, and Projects naturally — one term per section minimum.`,
+      where: fresher ? 'Skills + Projects + Summary' : 'Skills + Experience + Projects',
+      example: `Added "Agile" and "Git" under Tools; referenced "SQL" in project data pipeline bullet for ${firstProject}.`,
+      evidence: top.join(', ').slice(0, 100),
+      valueAddition: 'Raises ATS match scores without reading as keyword stuffing when tied to real work.',
+      targetEmployers: deep?.targetEmployers?.slice(0, 80) || top.join(', '),
       impact: 'High',
     },
   ]
+
+  if (!fresher) {
+    const expRole = uniqueStrings((resume?.experience || []).map((e) => e?.role || e?.title), 1)[0] || 'your role'
+    recs.push({
+      section: 'Experience Alignment',
+      current: 'Experience bullets may not reflect the stacks your target employers filter on.',
+      suggestion: `For ${expRole}, rewrite 2 bullets with "action + stack + outcome" and include one missing keyword from: ${top.slice(0, 3).join(', ')}.`,
+      where: `Experience > ${expRole}`,
+      example: 'Implemented CI/CD in GitHub Actions for a Node.js service, reducing release turnaround time by 40%.',
+      evidence: expRole,
+      valueAddition: 'Connects work history to the next role you are targeting.',
+      targetEmployers: deep?.targetEmployers?.slice(0, 80) || '',
+      impact: 'High',
+    })
+  }
+
+  return recs
 }
 
-function shapeRecommendationList(items, fallbackItems, minCount = 8, maxCount = 10) {
+function shapeRecommendationList(items, fallbackItems, minCount = 12, maxCount = 15, { fresher = false, profile = 'cs' } = {}) {
   const dedupe = new Set()
   const out = []
+  const bannedForFresher = /^experience$/i
+
   const pushUnique = (r) => {
-    const section = String(r?.section || '').trim().slice(0, 64)
-    const suggestion = String(r?.suggestion || '').trim().slice(0, 900)
+    const sanitized = sanitizeRecommendationForProfile(r, { fresher, profile })
+    if (!sanitized) return
+    const section = String(sanitized?.section || '').trim().slice(0, 64)
+    if (fresher && bannedForFresher.test(section)) return
+    const suggestion = String(sanitized?.suggestion || '').trim().slice(0, 1200)
     if (!section || !suggestion) return
+    if (/create an experience section|no experience section/i.test(`${sanitized?.current} ${suggestion}`) && fresher) return
+    if (/software engineer @ infosys|@ infosys, developed/i.test(suggestion) && fresher) return
     const key = `${section.toLowerCase()}|${suggestion.toLowerCase().slice(0, 80)}`
     if (dedupe.has(key)) return
     dedupe.add(key)
     out.push({
       section,
-      current: String(r?.current || 'Needs optimization').trim().slice(0, 320),
+      current: String(sanitized?.current || 'Needs optimization').trim().slice(0, 400),
       suggestion,
-      where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 180) || section,
-      example: String(r?.example || '').trim().slice(0, 360),
-      evidence: String(r?.evidence || '').trim().slice(0, 200),
-      impact: String(r?.impact || '').trim().toLowerCase() === 'high' ? 'High' : 'Medium',
+      where: String(sanitized?.where || sanitized?.location || sanitized?.target || '').trim().slice(0, 200) || section,
+      example: String(sanitized?.example || '').trim().slice(0, 420),
+      evidence: String(sanitized?.evidence || '').trim().slice(0, 220),
+      valueAddition: String(sanitized?.valueAddition || sanitized?.value_addition || '').trim().slice(0, 320),
+      targetEmployers: String(sanitized?.targetEmployers || sanitized?.target_employers || '').trim().slice(0, 200),
+      impact: String(sanitized?.impact || '').trim().toLowerCase() === 'high' ? 'High' : 'Medium',
     })
   }
 
@@ -607,13 +757,15 @@ function shapeRecommendationList(items, fallbackItems, minCount = 8, maxCount = 
   if (out.length >= minCount) return out.slice(0, maxCount)
   return (fallbackItems || []).slice(0, maxCount).map((r) => ({
     section: String(r?.section || 'General').trim().slice(0, 64),
-    current: String(r?.current || 'Needs optimization').trim().slice(0, 320),
-    suggestion: String(r?.suggestion || 'Improve role relevance and ATS keyword coverage.').trim().slice(0, 900),
-    where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 180) || String(r?.section || 'General'),
-    example: String(r?.example || '').trim().slice(0, 360),
-    evidence: String(r?.evidence || '').trim().slice(0, 200),
+    current: String(r?.current || 'Needs optimization').trim().slice(0, 400),
+    suggestion: String(r?.suggestion || 'Improve role relevance and ATS keyword coverage.').trim().slice(0, 1200),
+    where: String(r?.where || r?.location || r?.target || '').trim().slice(0, 200) || String(r?.section || 'General'),
+    example: String(r?.example || '').trim().slice(0, 420),
+    evidence: String(r?.evidence || '').trim().slice(0, 220),
+    valueAddition: String(r?.valueAddition || '').trim().slice(0, 320),
+    targetEmployers: String(r?.targetEmployers || '').trim().slice(0, 200),
     impact: String(r?.impact || '').trim().toLowerCase() === 'high' ? 'High' : 'Medium',
-  }))
+  })).filter((r) => !(fresher && bannedForFresher.test(r.section)))
 }
 
 /**
@@ -674,58 +826,88 @@ app.post('/api/recommendations', async (req, res) => {
   try {
     const { resume, evaluation } = req.body
 
-    const systemPrompt = `You are a senior technical recruiter and ATS strategist. Analyze the candidate's ACTUAL resume text and ATS gap data below.
+    const deep = buildResumeDeepContext(resume, evaluation)
+    const profile = deep.profile
+    const fresher = deep.fresher
+    const filteredScores = filterScoresForRecommendations(evaluation?.scores?.all || [], profile)
+    const missingSkills = collectMissingSkills(filteredScores)
+    const weakAreas = collectWeakDimensions(filteredScores)
+    const lowScoreTargets = collectLowScoreEntities(filteredScores, 10)
 
-Output ONLY a valid JSON array of 8-10 objects with these exact keys:
-- section (Skills|Experience|Projects|Summary|Education|Formatting|ATS Gaps|Keyword Coverage)
-- current (quote or closely paraphrase a real resume line; name the role/project/company)
-- suggestion (3-5 detailed sentences: what to change, why it hurts ATS/hiring for named targets, how to fix)
-- where (exact resume location, e.g. "Experience > Software Engineer @ Infosys, bullet 2")
-- example (copy-paste-ready rewrite using their real names/stacks; include a metric)
-- evidence (verbatim snippet from resume, max 120 chars)
+    const fresherRules = fresher
+      ? `CANDIDATE IS A FRESHER (no substantive full-time experience). STRICT RULES:
+- Do NOT recommend creating fake full-time jobs or "Experience" sections at companies they never worked at.
+- Do NOT suggest "Software Engineer @ Infosys" or similar invented roles.
+- Focus ONLY on: Skills, Projects, Achievements, Internships (if listed), Education, Summary, Formatting, Project Positioning.
+- At least 4 recommendations must be about Projects with specific rewrites from their project text.
+- At least 2 about Skills/Achievements.`
+      : `Candidate has full-time experience — you may include Experience recommendations with real companies from their resume only.`
+
+    const profileRules =
+      profile === 'cs'
+        ? `PROFILE: Computer Science / IT. Target ONLY these employers in targetEmployers: IT services, consulting, product software (TCS, Infosys, Wipro, Cognizant, Accenture, HCL, IBM, Oracle, SAP, Adobe, OpenText, MAANG). Do NOT reference Cisco, Intel, NVIDIA, Qualcomm, Tata Motors, Bosch, BHEL, L&T civil, or other core/hardware employers.`
+        : `PROFILE: ${deep.profileLabel}. Target employers relevant to this core branch only — not generic IT services unless their degree is dual/CS.`
+
+    const systemPrompt = `You are an experienced campus placement counselor writing resume feedback for Indian graduates. Sound human, direct, and encouraging — write to the candidate as "you", not third person.
+
+Output ONLY a valid JSON array of 12-15 objects with these exact keys:
+- section (Skills|Projects|Achievements|Internships|Education|Summary|Formatting|Project Positioning|Keyword Coverage|Experience only if NOT a fresher)
+- current (quote their actual resume text — project name, skill list, or bullet)
+- suggestion (4-6 sentences: what to change, why recruiters care, how it helps campus shortlists — not keyword stuffing)
+- where (exact location on resume)
+- example (copy-paste-ready rewrite using THEIR project names and stacks)
+- evidence (verbatim snippet, max 120 chars)
+- valueAddition (one sentence: what the candidate gains — interview talking point, shortlist odds, clarity)
+- targetEmployers (2-4 comma-separated companies from the allowed list for their profile)
 - impact (High|Medium)
 
-Rules:
-1) Every item must anchor to this candidate's text — never generic "add more details" advice.
-2) Reference at least 4 different low-scoring ATS targets by name across the list.
-3) For weak bullets (short, no numbers, passive voice), quote them in "current" and rewrite in "example".
-4) Map missing mandatory skills from ATS data into specific Skills or Experience edits.
-5) No markdown, no numbering, no extra keys.`
-    const deep = buildResumeDeepContext(resume, evaluation)
-    const allScores = evaluation?.scores?.all || []
-    const missingSkills = collectMissingSkills(allScores)
-    const weakAreas = collectWeakDimensions(allScores)
-    const lowScoreTargets = collectLowScoreEntities(allScores, 8)
-    const userPrompt = `CANDIDATE: ${deep.contact || resume?.name || '—'}
+${fresherRules}
+${profileRules}
 
-SUMMARY/OBJECTIVE:
+Global rules:
+1) Never invent employers, internships, or jobs not in the resume.
+2) Every suggestion must cite something specific from their projects, skills, or education.
+3) Explain VALUE — why this edit helps a human recruiter, not just ATS keywords.
+4) No markdown, no extra keys.`
+
+    const userPrompt = `CANDIDATE: ${deep.contact || resume?.name || '—'}
+PROFILE: ${deep.profileLabel} | FRESHER: ${fresher ? 'YES' : 'NO'}
+ALLOWED TARGET EMPLOYERS: ${deep.targetEmployers}
+
+SUMMARY:
 ${deep.summary}
 
-SKILLS (${(resume?.skills || []).length} listed):
+SKILLS:
 ${deep.skillsList}
 
 EDUCATION:
 ${deep.educationBlock}
 
-EXPERIENCE (verbatim bullets):
+ACHIEVEMENTS / AWARDS (extracted):
+  ${deep.achievementsBlock}
+
+INTERNSHIPS (if any):
+${deep.internshipsBlock}
+
+FULL-TIME EXPERIENCE:
 ${deep.experienceBlock}
 
-PROJECTS (verbatim bullets):
+PROJECTS (verbatim):
 ${deep.projectBlock}
 
-LIKELY WEAK BULLETS (needs metrics/keywords):
-  ${deep.weakBulletsBlock}
+WEAK PROJECT BULLETS:
+  ${deep.weakProjectBulletsBlock}
 
-ATS SUMMARY: mass hiring avg ${evaluation?.summary?.avgMassHiring ?? 'N/A'}% | MAANG avg ${evaluation?.summary?.avgMaang ?? 'N/A'}% | Ivy avg ${evaluation?.summary?.avgIvyLeague ?? 'N/A'}%
+ATS SUMMARY: mass hiring ${evaluation?.summary?.avgMassHiring ?? 'N/A'}% | MAANG ${evaluation?.summary?.avgMaang ?? 'N/A'}%
 
-PER-TARGET GAPS (lowest scores first):
+RELEVANT PER-TARGET GAPS (profile-filtered, lowest first):
 ${deep.entityGapsBlock}
 
-TOP MISSING SKILLS (frequency-weighted): ${missingSkills.slice(0, 12).map(toTitle).join(', ') || 'N/A'}
-WEAKEST ATS DIMENSIONS: ${weakAreas.join(', ') || 'N/A'}
-LOWEST SCORING EMPLOYERS/UNIVERSITIES: ${lowScoreTargets.join(', ') || 'N/A'}
+TOP MISSING SKILLS: ${missingSkills.slice(0, 12).map(toTitle).join(', ') || 'N/A'}
+WEAKEST DIMENSIONS: ${weakAreas.join(', ') || 'N/A'}
+LOWEST SCORING TARGETS: ${lowScoreTargets.join(', ') || 'N/A'}
 
-Return JSON array only.`
+Return JSON array only (12-15 items).`
 
     const raw = await callGroq(systemPrompt, userPrompt, TOKENS_RECOMMENDATIONS, GROQ_MODEL, true)
     const llmRecommendations = parseJsonArraySalvage(raw)
@@ -737,11 +919,11 @@ Return JSON array only.`
           String(r.suggestion || '').trim()
       )
     const fallback = [
-      ...buildDeterministicFallbackRecommendations(resume, evaluation),
-      ...buildCoverageBoosterRecommendations(resume, missingSkills),
+      ...buildDeterministicFallbackRecommendations(resume, evaluation, deep),
+      ...buildCoverageBoosterRecommendations(resume, missingSkills, deep),
     ]
-    const recommendations = shapeRecommendationList(llmRecommendations, fallback, 8, 10)
-    res.json({ recommendations })
+    const recommendations = shapeRecommendationList(llmRecommendations, fallback, 12, 15, { fresher, profile })
+    res.json({ recommendations, meta: { profile, profileLabel: deep.profileLabel, fresher } })
   } catch (err) {
     console.error('recommendations error:', err)
     const status = err.message?.includes('not configured') ? 503 : 500

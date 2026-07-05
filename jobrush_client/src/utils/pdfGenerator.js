@@ -720,104 +720,204 @@ function wrapPdfText(doc, text, x, maxWidth) {
 }
 
 /**
- * Downloadable improvement report (not labeled as an AI report).
- * @param {{ resume?: object, recommendations: object[], evaluation?: object }} payload
+ * Downloadable improvement report — professional layout for campus placement feedback.
+ * @param {{ resume?: object, recommendations: object[], evaluation?: object, meta?: object }} payload
  */
-export function generateImprovementReportPDF({ resume, recommendations = [], evaluation } = {}) {
+export function generateImprovementReportPDF({ resume, recommendations = [], evaluation, meta } = {}) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const margin = 15
-  const pageWidth = 210 - 2 * margin
-  const primary = '#0ea5e9'
+  const pageW = 210
+  const pageH = 297
+  const margin = 18
+  const contentW = pageW - 2 * margin
+  const primary = [14, 116, 144]
+  const accent = [16, 185, 129]
+  const muted = [100, 116, 139]
+  const border = [226, 232, 240]
   let y = 0
+  let pageNum = 1
 
-  const checkPage = (needed = 20) => {
-    if (y + needed > 275) {
-      doc.addPage()
-      y = 20
-    }
+  const setColor = (rgb) => doc.setTextColor(rgb[0], rgb[1], rgb[2])
+  const setFill = (rgb) => doc.setFillColor(rgb[0], rgb[1], rgb[2])
+  const setDraw = (rgb) => doc.setDrawColor(rgb[0], rgb[1], rgb[2])
+
+  const footer = () => {
+    doc.setFontSize(8)
+    setColor(muted)
+    doc.text(`JobRush.ai  |  Page ${pageNum}`, pageW / 2, pageH - 10, { align: 'center' })
   }
 
-  doc.setFillColor(primary)
-  doc.rect(0, 0, 210, 38, 'F')
+  const newPage = () => {
+    footer()
+    doc.addPage()
+    pageNum += 1
+    y = 22
+  }
+
+  const checkPage = (needed = 24) => {
+    if (y + needed > pageH - 18) newPage()
+  }
+
+  const drawWrapped = (text, x, maxW, lineH = 4.8, fontSize = 9.5, style = 'normal') => {
+    doc.setFont('helvetica', style)
+    doc.setFontSize(fontSize)
+    const lines = wrapPdfText(doc, text, x, maxW)
+    for (const line of lines) {
+      checkPage(lineH + 2)
+      doc.text(line, x, y)
+      y += lineH
+    }
+    return lines.length
+  }
+
+  const drawLabelValue = (label, value, { labelColor = primary, indent = 0 } = {}) => {
+    if (!value) return
+    checkPage(14)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    setColor(labelColor)
+    doc.text(label, margin + indent, y)
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9.5)
+    setColor([30, 41, 59])
+    drawWrapped(value, margin + indent, contentW - indent, 4.8, 9.5, 'normal')
+    y += 2
+  }
+
+  // Header band
+  setFill(primary)
+  doc.rect(0, 0, pageW, 44, 'F')
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.text('Resume Improvement Report', 105, 16, { align: 'center' })
+  doc.setFontSize(22)
+  doc.text('Resume Improvement Report', pageW / 2, 18, { align: 'center' })
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   const candidate = resume?.name || 'Candidate'
   const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-  doc.text(`Prepared for ${candidate}  |  ${dateStr}`, 105, 26, { align: 'center' })
-  if (resume?.email) {
-    doc.setFontSize(9)
-    doc.text(resume.email, 105, 33, { align: 'center' })
+  doc.text(`Prepared for ${candidate}`, pageW / 2, 28, { align: 'center' })
+  doc.setFontSize(9)
+  doc.text(dateStr + (resume?.email ? `  |  ${resume.email}` : ''), pageW / 2, 36, { align: 'center' })
+
+  y = 52
+  setColor([30, 41, 59])
+
+  const profileLabel = meta?.profileLabel || ''
+  const isFresher = meta?.fresher
+  if (profileLabel || isFresher !== undefined) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.text('Profile context', margin, y)
+    y += 6
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9.5)
+    const ctx = [
+      profileLabel ? `Field: ${profileLabel}` : null,
+      isFresher === true ? 'Level: Fresher — focus on Skills, Projects, Achievements & Internships' : isFresher === false ? 'Level: Experienced candidate' : null,
+    ].filter(Boolean).join('   |   ')
+    drawWrapped(ctx, margin, contentW, 4.5, 9.5)
+    y += 4
   }
-  doc.setTextColor(0, 0, 0)
-  y = 48
 
   if (evaluation?.summary) {
+    checkPage(22)
+    setFill([240, 249, 255])
+    setDraw(border)
+    doc.roundedRect(margin, y - 2, contentW, 16, 2, 2, 'FD')
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
-    doc.text('ATS Compatibility Overview', margin, y)
-    y += 7
+    doc.setFontSize(9)
+    setColor(primary)
+    doc.text('ATS compatibility snapshot', margin + 4, y + 4)
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    const overview = `Mass hiring average: ${evaluation.summary.avgMassHiring ?? '—'}%  |  MAANG average: ${evaluation.summary.avgMaang ?? '—'}%  |  Ivy League average: ${evaluation.summary.avgIvyLeague ?? '—'}%`
-    const overviewLines = wrapPdfText(doc, overview, pageWidth)
-    doc.text(overviewLines, margin, y)
-    y += overviewLines.length * 5 + 6
+    doc.setFontSize(9)
+    setColor([51, 65, 85])
+    const overview = `Mass hiring: ${evaluation.summary.avgMassHiring ?? '—'}%   |   MAANG: ${evaluation.summary.avgMaang ?? '—'}%   |   Ivy League: ${evaluation.summary.avgIvyLeague ?? '—'}%`
+    doc.text(overview, margin + 4, y + 11)
+    y += 22
   }
 
+  checkPage(18)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
-  doc.text(`Recommendations (${recommendations.length})`, margin, y)
+  setColor([15, 23, 42])
+  doc.text(`Personalized recommendations (${recommendations.length})`, margin, y)
+  y += 5
+  doc.setFont('helvetica', 'italic')
+  doc.setFontSize(8.5)
+  setColor(muted)
+  doc.text('Each item cites your resume and explains why the change helps recruiters — not just ATS keywords.', margin, y)
   y += 8
 
   recommendations.forEach((rec, index) => {
-    checkPage(42)
-    doc.setFillColor(245, 247, 250)
-    doc.rect(margin, y - 4, pageWidth, 6, 'F')
+    checkPage(36)
+
+    const cardTop = y
+    setDraw(border)
+    setFill([248, 250, 252])
+    doc.roundedRect(margin, cardTop, contentW, 8, 1.5, 1.5, 'F')
+    setFill(primary)
+    doc.rect(margin, cardTop, 3, 8, 'F')
+
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(11)
-    doc.setTextColor(14, 116, 144)
-    doc.text(`${index + 1}. ${rec.section || 'Section'}`, margin + 2, y)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.setTextColor(100, 100, 100)
-    doc.text(`${rec.impact || 'Medium'} impact`, 210 - margin - 2, y, { align: 'right' })
-    y += 7
-    doc.setTextColor(0, 0, 0)
-    doc.setFontSize(9)
+    setColor(primary)
+    doc.text(`${index + 1}. ${rec.section || 'Section'}`, margin + 6, cardTop + 5.5)
 
-    const blocks = [
-      ['Location', rec.where || rec.section],
-      ['Current state', rec.current],
-      ...(rec.evidence ? [['From your resume', rec.evidence]] : []),
-      ['Recommended change', rec.suggestion],
-      ...(rec.example ? [['Example rewrite', rec.example]] : []),
-    ]
+    const impact = rec.impact || 'Medium'
+    const impactColor = impact === 'High' ? [190, 24, 93] : [79, 70, 229]
+    doc.setFontSize(8)
+    setColor(impactColor)
+    doc.text(`${impact} impact`, pageW - margin - 2, cardTop + 5.5, { align: 'right' })
 
-    for (const [label, value] of blocks) {
-      if (!value) continue
+    y = cardTop + 12
+
+    drawLabelValue('Where on resume', rec.where || rec.section)
+    drawLabelValue('What we see now', rec.current)
+    if (rec.evidence) drawLabelValue('From your resume', `"${rec.evidence}"`, { labelColor: muted })
+    drawLabelValue('What to change', rec.suggestion)
+
+    if (rec.valueAddition) {
       checkPage(16)
+      setFill([236, 253, 245])
+      setDraw([167, 243, 208])
+      const boxY = y
+      doc.roundedRect(margin, boxY, contentW, 14, 2, 2, 'FD')
       doc.setFont('helvetica', 'bold')
-      doc.text(`${label}:`, margin, y)
-      y += 4
+      doc.setFontSize(8.5)
+      setColor(accent)
+      doc.text('Why this helps you', margin + 4, boxY + 5)
       doc.setFont('helvetica', 'normal')
-      const lines = wrapPdfText(doc, value, pageWidth)
-      doc.text(lines, margin, y)
-      y += lines.length * 4.2 + 3
+      doc.setFontSize(9)
+      setColor([6, 78, 59])
+      const vaLines = wrapPdfText(doc, rec.valueAddition, margin + 4, contentW - 8)
+      let vaY = boxY + 10
+      for (const line of vaLines.slice(0, 3)) {
+        doc.text(line, margin + 4, vaY)
+        vaY += 4.2
+      }
+      y = boxY + 14 + 4
     }
-    y += 4
+
+    if (rec.example) {
+      drawLabelValue('Example rewrite', rec.example, { labelColor: [71, 85, 105] })
+    }
+
+    if (rec.targetEmployers) {
+      doc.setFont('helvetica', 'italic')
+      doc.setFontSize(8)
+      setColor(muted)
+      checkPage(6)
+      doc.text(`Relevant for: ${rec.targetEmployers}`, margin, y)
+      y += 5
+    }
+
+    y += 6
+    setDraw(border)
+    doc.line(margin, y, pageW - margin, y)
+    y += 8
   })
 
-  const pageCount = doc.getNumberOfPages()
-  for (let p = 1; p <= pageCount; p++) {
-    doc.setPage(p)
-    doc.setFontSize(8)
-    doc.setTextColor(128, 128, 128)
-    doc.text('JobRush.ai — Resume Improvement Report', 105, doc.internal.pageSize.height - 10, { align: 'center' })
-  }
+  footer()
 
   const safeName = String(candidate).replace(/\s+/g, '_').replace(/[^\w.-]/g, '') || 'Candidate'
   const filename = `Resume_Improvement_Report_${safeName}_${Date.now()}.pdf`

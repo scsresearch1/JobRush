@@ -13,12 +13,13 @@ import { evaluateResume } from '../ats/index.js'
 import { getDisplayLines } from '../utils/cleanAiText.js'
 import { readStoredParsedResume } from '../utils/parsedResumeStorage.js'
 import { generateImprovementReportPDF } from '../utils/pdfGenerator.js'
+import { detectResumeProfile, isFresherResume, getProfileLabel } from '../utils/resumeProfile.js'
 
 const FALLBACK_RECOMMENDATIONS = [
-  { section: 'Skills', current: 'Review your skills section', suggestion: 'Add ATS-targeted keywords from job descriptions', impact: 'High' },
-  { section: 'Projects', current: 'Add project details', suggestion: 'Quantify impact with metrics (users, %, time saved)', impact: 'High' },
-  { section: 'Experience', current: 'Use action verbs', suggestion: 'Rewrite bullet points with verbs like "Led", "Built", "Reduced"', impact: 'Medium' },
-  { section: 'Keywords', current: 'Missing common terms', suggestion: 'Incorporate Agile, CI/CD, or role-specific keywords', impact: 'High' },
+  { section: 'Skills', current: 'Review your skills section', suggestion: 'Group skills by category and lead with stacks you can defend in a technical interview', impact: 'High', valueAddition: 'Recruiters scan skills in under 10 seconds — clear grouping improves shortlist odds.' },
+  { section: 'Projects', current: 'Add project details', suggestion: 'Quantify impact with metrics (accuracy, users, time saved) and state your individual contribution', impact: 'High', valueAddition: 'Strong projects become interview stories even without work experience.' },
+  { section: 'Achievements', current: 'Highlight accomplishments', suggestion: 'Add hackathons, certifications, or academic awards with specific ranks or credentials', impact: 'Medium', valueAddition: 'Differentiates your resume from hundreds of similar fresher profiles.' },
+  { section: 'Internships', current: 'If applicable', suggestion: 'Describe internship deliverables with stack and one measurable outcome — do not invent roles', impact: 'Medium', valueAddition: 'Shows workplace exposure when listed honestly.' },
 ]
 
 const RECOMMENDATION_COOLDOWN_MS = 45000
@@ -28,6 +29,7 @@ const ResumeImprovements = () => {
   const [showDownloadModal, setShowDownloadModal] = useState(false)
   const [recommendations, setRecommendations] = useState(FALLBACK_RECOMMENDATIONS)
   const [evaluation, setEvaluation] = useState(null)
+  const [reportMeta, setReportMeta] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [cooldownUntil, setCooldownUntil] = useState(0)
@@ -69,10 +71,11 @@ const ResumeImprovements = () => {
         setLoading(false)
         return
       }
-      const { recommendations: recs } = await getRecommendations(parsed, evaluation)
+      const { recommendations: recs, meta } = await getRecommendations(parsed, evaluation)
       if (recs?.length > 0) {
         setRecommendations(recs)
       }
+      if (meta) setReportMeta(meta)
       setError(null)
       console.log('[ResumeImprovements] Success', { count: recs?.length })
     } catch (err) {
@@ -86,6 +89,9 @@ const ResumeImprovements = () => {
   useEffect(() => {
     fetchRecommendations()
   }, [fetchRecommendations])
+
+  const profileLabel = reportMeta?.profileLabel || (resume ? getProfileLabel(detectResumeProfile(resume)) : '')
+  const isFresher = reportMeta?.fresher ?? (resume ? isFresherResume(resume) : false)
 
   return (
     <div>
@@ -105,8 +111,23 @@ const ResumeImprovements = () => {
               Resume Improvement Recommendations
             </h1>
             <p className="text-gray-600">
-              Detailed, resume-specific guidance tied to your ATS scores, actual bullets, and target employers.
+              Personalized guidance for your {profileLabel || 'profile'} — focused on skills, projects, achievements
+              {isFresher ? ', and internships' : ''}, not generic keyword lists.
             </p>
+            {resume && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {profileLabel && (
+                  <span className="inline-flex rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800">
+                    {profileLabel}
+                  </span>
+                )}
+                {isFresher && (
+                  <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+                    Fresher — projects & achievements focus
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           {resume && (
             <div className="flex flex-wrap items-center gap-3 shrink-0">
@@ -117,6 +138,11 @@ const ResumeImprovements = () => {
                     resume,
                     recommendations: filteredRecommendations,
                     evaluation,
+                    meta: reportMeta || {
+                      profileLabel,
+                      fresher: isFresher,
+                      profile: resume ? detectResumeProfile(resume) : 'cs',
+                    },
                   })
                 }
                 disabled={filteredRecommendations.length === 0}
@@ -276,6 +302,16 @@ const ResumeImprovements = () => {
                 {rec.example && (
                   <p className="mt-3 text-sm text-gray-700">
                     <span className="font-medium">Example rewrite:</span> {rec.example}
+                  </p>
+                )}
+                {rec.valueAddition && (
+                  <p className="mt-3 text-sm text-emerald-800 bg-emerald-50/60 rounded-lg px-3 py-2 border border-emerald-100">
+                    <span className="font-medium">Why this helps:</span> {rec.valueAddition}
+                  </p>
+                )}
+                {rec.targetEmployers && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    <span className="font-medium text-gray-600">Relevant for:</span> {rec.targetEmployers}
                   </p>
                 )}
                 <AcceptabilityPreview evaluation={evaluation} recommendation={rec} />
